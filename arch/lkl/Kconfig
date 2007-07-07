@@ -1,0 +1,103 @@
+#############################################################################
+#
+# For a description of the syntax of this configuration file,
+# see Documentation/kbuild/kconfig-language.txt.
+#
+#############################################################################
+
+mainmenu "Lib Linux Kernel Configuration"
+
+config ISA
+	bool
+	default n
+config ISAPNP
+	bool
+	default n
+config EISA
+	bool
+	default n
+config MCA
+	bool
+	default n
+config PCI
+	bool
+	default n
+config BLK_DEV_IO_TRACE
+	bool 
+	default n
+config RWSEM_GENERIC_SPINLOCK
+	bool
+	default y
+config SMP
+	bool
+	default n
+config HIGHMEM
+	bool 
+	default n
+config SPLIT_PTLOCK_CPUS
+	hex
+	default  0
+config MMU
+        bool 
+        default n	
+
+config LOG_BUF_SHIFT
+        hex
+        default 0xc
+
+config SEMAPHORE_SLEEPERS
+        bool
+        default y
+
+config GENERIC_TIME
+        bool
+        default y
+
+config GENERIC_FIND_NEXT_BIT
+        bool 
+        default y
+
+config GENERIC_HWEIGHT
+        bool
+        default y
+
+config GENERIC_HARDIRQS 
+        bool 
+        default y
+
+config FLATMEM
+        bool
+        default y
+
+config FLAT_NODE_MEM_MAP
+        bool
+        default y
+
+config SYSFS
+        bool
+        default n
+
+
+
+#############################################################################
+#### v850-specific config
+
+# Define the architecture
+config LKL
+	bool
+	default y
+
+source init/Kconfig
+
+source "net/Kconfig"
+
+source "drivers/base/Kconfig"
+
+source "fs/Kconfig"
+
+source "security/Kconfig"
+
+source "crypto/Kconfig"
+
+source "lib/Kconfig"
+
