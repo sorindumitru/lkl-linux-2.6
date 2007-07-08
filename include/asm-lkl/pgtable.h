@@ -71,5 +71,8 @@ extern int is_in_rom(unsigned long);
 #define	VMALLOC_START	0
 #define	VMALLOC_END	0xffffffff
 
+static inline void arch_enter_lazy_cpu_mode(void)
+{
+}
 
 #endif

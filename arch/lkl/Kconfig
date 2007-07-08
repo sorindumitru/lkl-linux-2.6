@@ -77,6 +77,21 @@ config SYSFS
         bool
         default n
 
+config ZONE_DMA_FLAG
+        hex
+        default 0x00
+        
+config CRAMFS
+        bool 
+        default n
+
+config HAS_IOMEM
+        bool
+        default n
+
+config TINY_SHMEM
+	bool
+	default n
 
 
 #############################################################################

@@ -117,7 +117,6 @@ void __init mem_init_0(void)
 	{
 		unsigned long zones_size[MAX_NR_ZONES] = {0, };
 
-		zones_size[ZONE_DMA] = 0 >> PAGE_SHIFT;
 		zones_size[ZONE_NORMAL] = (phys_mem_size) >> PAGE_SHIFT;
 		free_area_init(zones_size);
 	}
@@ -128,13 +127,13 @@ asmlinkage void schedule_tail(struct task_struct *prev);
 extern void _switch_to(void *prev, void *next);
 void switch_to(struct task_struct *prev, struct task_struct *next, struct task_struct *last)
 {
-        _current_thread_info=next->thread_info;
+        _current_thread_info=task_thread_info(next);
         //kind of a hack because technically we don't run from the next process context
         if (!next->thread.sched_tail) {
                 next->thread.sched_tail=1;
                 schedule_tail(prev);
         }
-        _switch_to(prev->thread_info+1, next->thread_info+1);
+        _switch_to(task_thread_info(prev)+1, task_thread_info(next)+1);
 }
 
 extern int _copy_thread(int (*f)(void*), void*, void*);
@@ -147,7 +146,7 @@ int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,
         void *arg=(void*)unused;
 
         p->thread.sched_tail=0;
-        return _copy_thread(f, arg, p->thread_info+1);
+        return _copy_thread(f, arg, task_thread_info(p)+1);
 }
 
 

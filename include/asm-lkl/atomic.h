@@ -1,6 +1,8 @@
 #ifndef _ASM_LKL_ATOMIC_H
 #define _ASM_LKL_ATOMIC_H
 
+#include <asm/system.h>
+
 typedef struct { int counter; } atomic_t;
 
 #define ATOMIC_INIT(i) { (i) }
