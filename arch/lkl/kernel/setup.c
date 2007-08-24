@@ -86,8 +86,12 @@ void __init mem_init_0(void)
 
         _mem_init(&phys_mem, &phys_mem_size);
         BUG_ON(!phys_mem);
-        BUG_ON(phys_mem != PAGE_ALIGN(PAGE_OFFSET));
-        BUG_ON(phys_mem_size % PAGE_SIZE != 0);
+
+        if (PAGE_ALIGN(phys_mem) != phys_mem) {
+		phys_mem_size-=PAGE_ALIGN(phys_mem)-phys_mem;
+		phys_mem=PAGE_ALIGN(phys_mem);
+		phys_mem_size=(phys_mem_size/PAGE_SIZE)*PAGE_SIZE;
+	}
 
 
 
@@ -200,15 +204,6 @@ unsigned int do_IRQ(int irq, struct pt_regs *regs)
 	irq_exit();
 	set_irq_regs(old_regs);
 	return 1;
-}
-
-
-
-
-unsigned long long sched_clock(void)
-{
-        /* no locking but a rare wrong value is not a big deal */
-        return (jiffies_64 - INITIAL_JIFFIES) * (1000000000 / HZ);
 }
 
 void exit_thread(void)
@@ -423,3 +418,28 @@ void __init setup_arch(char **cl)
 }
 
 late_initcall(sbull_init);
+
+
+unsigned long irqs_enabled=0;
+
+unsigned long __local_save_flags(void)
+{
+        return irqs_enabled;
+}
+
+void __local_irq_restore(unsigned long flags)
+{
+        irqs_enabled=flags;
+}
+
+void local_irq_enable(void)
+{
+        irqs_enabled=1;
+}
+
+void local_irq_disable(void)
+{
+        irqs_enabled=0;
+}
+
+

@@ -461,7 +461,7 @@ static int __init printk_time_setup(char *str)
 
 __setup("time", printk_time_setup);
 
-__attribute__((weak)) unsigned long long printk_clock(void)
+__weak unsigned long long printk_clock(void)
 {
 	return sched_clock();
 }

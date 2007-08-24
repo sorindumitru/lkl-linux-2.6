@@ -51,6 +51,10 @@ extern void __chk_io_ptr(const void __iomem *);
 # include <linux/compiler-intel.h>
 #endif
 
+#ifdef __MINGW32__ 
+# include <linux/compiler-mingw.h>
+#endif
+
 /*
  * Generic compiler-dependent macros required for kernel
  * build go below this comment. Actual compiler/compiler version
@@ -59,6 +63,10 @@ extern void __chk_io_ptr(const void __iomem *);
 
 #define likely(x)	__builtin_expect(!!(x), 1)
 #define unlikely(x)	__builtin_expect(!!(x), 0)
+
+#ifndef __weak
+# define __weak __attribute__((weak))
+#endif
 
 /* Optimization barrier */
 #ifndef barrier

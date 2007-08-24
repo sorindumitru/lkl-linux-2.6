@@ -41,10 +41,6 @@ config MMU
         bool 
         default n	
 
-config LOG_BUF_SHIFT
-        hex
-        default 0xc
-
 config SEMAPHORE_SLEEPERS
         bool
         default y
@@ -81,10 +77,6 @@ config ZONE_DMA_FLAG
         hex
         default 0x00
         
-config CRAMFS
-        bool 
-        default n
-
 config HAS_IOMEM
         bool
         default n
@@ -93,9 +85,9 @@ config TINY_SHMEM
 	bool
 	default n
 
-
-#############################################################################
-#### v850-specific config
+config BLK_DEV_INITRD
+	bool
+	default n
 
 # Define the architecture
 config LKL

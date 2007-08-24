@@ -24,7 +24,7 @@
  * This read-write spinlock protects us from races in SMP while
  * playing with xtime and avenrun.
  */
-__attribute__((weak)) __cacheline_aligned_in_smp DEFINE_SEQLOCK(xtime_lock);
+__weak __cacheline_aligned_in_smp DEFINE_SEQLOCK(xtime_lock);
 
 EXPORT_SYMBOL(xtime_lock);
 
@@ -226,7 +226,7 @@ int timekeeping_is_continuous(void)
  *
  *  XXX - Do be sure to remove it once all arches implement it.
  */
-unsigned long __attribute__((weak)) read_persistent_clock(void)
+unsigned long __weak read_persistent_clock(void)
 {
 	return 0;
 }

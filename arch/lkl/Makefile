@@ -20,23 +20,10 @@ arch_dir = arch/lkl
 
 CFLAGS += -fno-builtin -g 
 
-# By default, build a kernel that runs on the gdb v850 simulator.
-KBUILD_DEFCONFIG := sim_defconfig
+KALLSYMS += --symbol-prefix=$(shell echo | $(CROSS_COMPILE)cpp -dM | grep USER_LABEL_PREFIX | cut -f3 -d ' ')
+
+KBUILD_DEFCONFIG := defconfig
 
 core-y += $(arch_dir)/kernel/
 lib-y  += $(arch_dir)/lib/
 
-# Deal with the initial contents of the root device
-ifdef ROOT_FS_IMAGE
-core-y += root_fs_image.o
-
-# Because the kernel build-system erases all explicit .o build rules, we
-# have to use an intermediate target to fool it into building for us.
-# This results in it being built anew each time, but that's alright.
-root_fs_image.o: root_fs_image_force
-
-root_fs_image_force: $(ROOT_FS_IMAGE)
-	$(OBJCOPY) $(OBJCOPY_FLAGS_BLOB) --rename-section .data=.root,alloc,load,readonly,data,contents $< root_fs_image.o
-endif
-
-CLEAN_FILES += root_fs_image.o

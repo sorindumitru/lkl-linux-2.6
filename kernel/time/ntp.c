@@ -186,7 +186,7 @@ u64 current_tick_length(void)
 }
 
 
-void __attribute__ ((weak)) notify_arch_cmos_timer(void)
+void __weak notify_arch_cmos_timer(void)
 {
 	return;
 }

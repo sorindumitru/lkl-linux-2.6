@@ -4,4 +4,8 @@
 
 #define cond_syscall(x) 
 
+#include <asm-i386/unistd.h>
+
+#undef __ARCH_WANT_SYS_SIGPROCMASK
+
 #endif

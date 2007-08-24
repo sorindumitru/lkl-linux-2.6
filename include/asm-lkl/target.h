@@ -10,11 +10,17 @@
 
 #define ELF_CLASS	ELFCLASS32
 
+#if defined(__ELF__)
 #define TARGET_FORMAT "elf32-i386"
 #define TARGET_ARCH   "i386"
+#elif defined(__MINGW32__)
+#define TARGET_FORMAT "pe-i386"
+#define TARGET_ARCH   "i386"
+#else
+#error unknown target
+#endif
 
 #endif
 #endif
-
 
 #endif

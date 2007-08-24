@@ -1,14 +1,15 @@
-#include <asm-generic/vmlinux.lds.h>
+#include <asm/vmlinux.lds.h>
 #include <asm/target.h>
 #include <asm/thread_info.h>
         
 OUTPUT_FORMAT(TARGET_FORMAT)
 OUTPUT_ARCH(TARGET_ARCH)
 ENTRY(start_kernel)
-jiffies = jiffies_64;
+VMLINUX_SYMBOL(jiffies) = VMLINUX_SYMBOL(jiffies_64);
 
 SECTIONS
 {
+#ifdef __ELF__	
         /* Read-only sections, merged into text segment: */
         . = + SIZEOF_HEADERS;
         .interp : { *(.interp) }
@@ -32,139 +33,142 @@ SECTIONS
         .rela.bss      : { *(.rela.bss)		}
         .rel.plt       : { *(.rel.plt)		}
         .rela.plt      : { *(.rela.plt)		}
-
         .plt : { *(.plt) }
+#endif
+	
         .text : {
-                _text = .;
-                _stext = . ;
-                *(.text)
+		_text = .; 
+                VMLINUX_SYMBOL(_stext) = .;
+		TEXT_TEXT
                 SCHED_TEXT
-                LOCK_TEXT
+		LOCK_TEXT
+		KPROBES_TEXT
                 *(.fixup)
-                _etext = .;
-                PROVIDE (etext = .);
-        }
-
-
-        RODATA
-
-        .fini      : { *(.fini)    } =0
-        .ctors     : { *(.ctors)   }
-        .dtors     : { *(.dtors)   }
-
-        .fixup     : { *(.fixup) }
-
-        __ex_table : {
-                __start___ex_table = .;
-                *(__ex_table)
-		__stop___ex_table = .;
-	}
-
-	__bug_table : {
-		__start___bug_table = .;
+                VMLINUX_SYMBOL(_etext) = .;
+                VMLINUX_SYMBOL(_sinittext) = .;
+                *(.init.text)
+                VMLINUX_SYMBOL(_einittext) = .;
+	        *(.exit.text) 
+		VMLINUX_SYMBOL(__start___bug_table) = .;	
 		*(__bug_table)
-		__stop___bug_table = .;
+		VMLINUX_SYMBOL(__stop___bug_table) = .;
+	  	VMLINUX_SYMBOL(__start___ex_table) = . ; 
+		 *(__ex_table)
+	  	VMLINUX_SYMBOL(__stop___ex_table) = .;
+	}
+	
+	RODATA_SECTION : {
+		VMLINUX_SYMBOL(__start_rodata) = .;
+
+		*(RODATA_SECTION)
+	
+		*(__vermagic)
+	
+		/* Kernel symbol table: Normal symbols */
+		VMLINUX_SYMBOL(__start___ksymtab) = .;
+		*(__ksymtab)
+		VMLINUX_SYMBOL(__stop___ksymtab) = .;
+	
+		/* Kernel symbol table: GPL-only symbols */
+		VMLINUX_SYMBOL(__start___ksymtab_gpl) = .;
+		*(__ksymtab_gpl)
+		VMLINUX_SYMBOL(__stop___ksymtab_gpl) = .;
+	
+		/* Kernel symbol table: Normal unused symbols */
+		VMLINUX_SYMBOL(__start___ksymtab_unused) = .;
+		*(__ksymtab_unused)
+		VMLINUX_SYMBOL(__stop___ksymtab_unused) = .;
+	
+		/* Kernel symbol table: GPL-only unused symbols */
+		VMLINUX_SYMBOL(__start___ksymtab_unused_gpl) = .;
+		*(__ksymtab_unused_gpl)
+		VMLINUX_SYMBOL(__stop___ksymtab_unused_gpl) = .;
+	
+		/* Kernel symbol table: GPL-future-only symbols */
+		VMLINUX_SYMBOL(__start___ksymtab_gpl_future) = .;
+		*(__ksymtab_gpl_future)
+		VMLINUX_SYMBOL(__stop___ksymtab_gpl_future) = .;
+	
+		/* Kernel symbol table: Normal symbols */
+		VMLINUX_SYMBOL(__start___kcrctab) = .;
+		*(__kcrctab)
+		VMLINUX_SYMBOL(__stop___kcrctab) = .;
+	
+		VMLINUX_SYMBOL(__start___kcrctab_gpl) = .;
+		*(__kcrctab_gpl)
+		VMLINUX_SYMBOL(__stop___kcrctab_gpl) = .;
+	
+		/* Kernel symbol table: Normal unused symbols */
+		VMLINUX_SYMBOL(__start___kcrctab_unused) = .;
+		*(__kcrctab_unused)
+		VMLINUX_SYMBOL(__stop___kcrctab_unused) = .;
+	
+		/* Kernel symbol table: GPL-only unused symbols */
+		VMLINUX_SYMBOL(__start___kcrctab_unused_gpl) = .;
+		*(__kcrctab_unused_gpl)
+		VMLINUX_SYMBOL(__stop___kcrctab_unused_gpl) = .;
+	
+		/* Kernel symbol table: GPL-future-only symbols */
+		VMLINUX_SYMBOL(__start___kcrctab_gpl_future) = .;
+		*(__kcrctab_gpl_future)
+		VMLINUX_SYMBOL(__stop___kcrctab_gpl_future) = .;
+	
+		/* Kernel symbol table: strings */
+		*(__ksymtab_strings)
+	
+		/* Built-in module parameters. */
+		VMLINUX_SYMBOL(__start___param) = .;
+		*(__param)
+		VMLINUX_SYMBOL(__stop___param) = .;
+        
+	        VMLINUX_SYMBOL(__setup_start) = .;
+                *(.init.setup) 
+                VMLINUX_SYMBOL(__setup_end) = .;
+        
+	        VMLINUX_SYMBOL(__initcall_start) = .;
+                INITCALLS
+	        VMLINUX_SYMBOL(__initcall_end) = .;           
+
+	        VMLINUX_SYMBOL(__con_initcall_start) = .;
+                *(.con_initcall.init) 
+                VMLINUX_SYMBOL(__con_initcall_end) = .;
+
+		VMLINUX_SYMBOL(__security_initcall_start) = .;
+		*(.security_initcall.init)
+		VMLINUX_SYMBOL(__security_initcall_end) = .;
+	
+		VMLINUX_SYMBOL(__end_rodata) = .;
 	}
 
         /* Read-write section, merged into data segment: */
         . = ALIGN(4096);
         .data    :
         {
-                *(.data)
+                DATA_DATA
+                *(.init.data);	
                 CONSTRUCTORS
+		*(.data.cacheline_aligned) 
+		*(.exit.data) 
         }
+
+	VMLINUX_SYMBOL(_sextratext) = .;
+        VMLINUX_SYMBOL(_eextratext) = .;	
 
         . = ALIGN(4096);
-        __nosave_begin = .;
-        .data_nosave : { *(.data.nosave) }
-        . = ALIGN(4096);
-        __nosave_end = .;
-
-        . = ALIGN(32);
-        .data.cacheline_aligned : { *(.data.cacheline_aligned) }
-
-        _edata  =  .;
-        PROVIDE (edata = .);
-
-        . = ALIGN(4096);
-        __init_begin = .;
-        .init.text : {
-                _sinittext = .;
-                *(.init.text)
-                _einittext = .;
-        }
-        /* .exit.text is discarded at runtime, not link time,
-           to deal with references from __bug_table */
-        .exit.text : { *(.exit.text) }
-        .init.data : {
-                *(.init.data);
-        }
-
-        . = ALIGN(16);
-
-
-        .init.setup : { 
-                __setup_start = .;
-                *(.init.setup) 
-                __setup_end = .;
-        }
-
-
-        .initcall.init : {
-                __initcall_start = .;
-                INITCALLS
-               __initcall_end = .;           
-        }
-
-        .con_initcall.init : { 
-                __con_initcall_start = .;
-                *(.con_initcall.init) 
-                __con_initcall_end = .;
-        }
-
-        SECURITY_INIT
-
-        . = ALIGN(32);
-
-        .data.percpu  : { 
-                __per_cpu_start = .;
-                *(.data.percpu) 
-                __per_cpu_end = .;
-        }
-
-
-        . = ALIGN(4096);
-        .init.ramfs : { 
-                __initramfs_start = .;
-                *(.init.ramfs) 
-                __initramfs_end = .;
-        }
-
-
-        . = ALIGN(4096);
-        __init_end = .;
-
-        . = ALIGN(4096);
-        _sextratext = .;
-        _eextratext = .;
-
+	
         .bss : {
-                __bss_start = .;
-                *(.sbss) *(.scommon)
+                VMLINUX_SYMBOL(__bss_start) = .;
+		*(.sbss) *(.scommon)
                 *(.dynbss)
                 *(.bss)
-                *(COMMON)
-                __bss_stop = .;
+                VMLINUX_SYMBOL(__bss_stop) = .;
         }
 
-
-        _end = . ;
-        PROVIDE (end = .);
+        VMLINUX_SYMBOL(_end) = . ;
 
         /* Sections to be discarded. */
         /DISCARD/ : {
                 *(.exitcall.exit)
-                *(.exit.data)
         }
 }
 
