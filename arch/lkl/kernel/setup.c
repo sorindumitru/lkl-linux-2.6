@@ -63,7 +63,7 @@ static struct console lkl_console = {
 
 extern void get_cmd_line(char **);
 
-extern long (*_panic_blink)(long);
+extern long (_panic_blink)(long);
 
 unsigned long phys_mem,  phys_mem_size;
 extern void _mem_init(unsigned long*, unsigned long*);
