@@ -26,4 +26,5 @@ KBUILD_DEFCONFIG := defconfig
 
 core-y += $(arch_dir)/kernel/
 lib-y  += $(arch_dir)/lib/
+drivers-y += $(LKL_DRIVERS)/
 
