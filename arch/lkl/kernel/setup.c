@@ -8,6 +8,7 @@
 #include <linux/fs.h>
 #include <linux/mqueue.h>
 #include <linux/seq_file.h>
+#include <linux/start_kernel.h>
 
 #include <asm/callbacks.h>
 
@@ -88,17 +89,6 @@ void show_mem(void)
 }
 
 struct seq_operations cpuinfo_op;
-
-void cpu_idle(void)
-{
-	while (1) {
-		while (!need_resched()) 
-                        ; //FIXME (irq related)
-		preempt_enable_no_resched();
-		schedule();
-		preempt_disable();
-	}
-}
 
 extern void mem_init_0(void);
 

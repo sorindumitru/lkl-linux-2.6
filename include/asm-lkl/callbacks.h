@@ -56,4 +56,20 @@ extern void linux_mem_init(unsigned long *start, unsigned long *size);
  */
 extern void linux_main(void);
 
+/*
+ * Create a new semaphore and return a handle to it, to be used with
+ * the linux_sem_up and linux_sem_down functions.
+ */
+extern void* linux_sem_new(int count);
+
+extern void linux_sem_up(void *sem);
+extern void linux_sem_down(void *sem);
+
+
+/*
+ * Signal an interrupt. data will be passed in irq_data of the pt_regs
+ * structure. (see get_irq_regs)
+ */
+int linux_trigger_irq(int irq, void *data);
+
 #endif
