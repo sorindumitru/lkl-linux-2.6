@@ -27,7 +27,7 @@ void __init mem_init_0(void)
 	init_mm.brk = (unsigned long) 0;
 #endif
 
-        linux_mem_init(&phys_mem, &phys_mem_size);
+        linux_nops->mem_init(&phys_mem, &phys_mem_size);
         BUG_ON(!phys_mem);
 
         if (PAGE_ALIGN(phys_mem) != phys_mem) {

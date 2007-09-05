@@ -13,7 +13,7 @@ void switch_to(struct task_struct *prev, struct task_struct *next, struct task_s
                 next->thread.sched_tail=1;
                 schedule_tail(prev);
         }
-        linux_switch_to(task_thread_info(prev)+1, task_thread_info(next)+1);
+        linux_nops->switch_to(task_thread_info(prev)+1, task_thread_info(next)+1);
 }
 
 int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,
@@ -24,22 +24,22 @@ int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,
         void *arg=(void*)unused;
 
         p->thread.sched_tail=0;
-        return linux_new_thread(f, arg, task_thread_info(p)+1);
+        return linux_nops->new_thread(f, arg, task_thread_info(p)+1);
 }
 
 struct thread_info* alloc_thread_info(struct task_struct *task)
 {
-        struct thread_info *ti=kmalloc(sizeof(struct thread_info)+linux_thread_info_size, GFP_KERNEL);
+        struct thread_info *ti=kmalloc(sizeof(struct thread_info)+linux_nops->thread_info_size, GFP_KERNEL);
 
         if (!ti)
                 return NULL;
-        linux_thread_info_init(ti+1);
+        linux_nops->thread_info_init(ti+1);
         return ti;
 }
 
 void free_thread_info(struct thread_info *ti)
 {
-        linux_free_thread(ti+1);
+        linux_nops->free_thread(ti+1);
         kfree(ti);
 }
 

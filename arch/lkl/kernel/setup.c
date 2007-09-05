@@ -12,6 +12,8 @@
 
 #include <asm/callbacks.h>
 
+struct linux_native_operations *linux_nops;
+
 static struct fs_struct init_fs = INIT_FS;
 static struct files_struct init_files = INIT_FILES;
 static struct signal_struct init_signals = INIT_SIGNALS(init_signals);
@@ -92,11 +94,13 @@ struct seq_operations cpuinfo_op;
 
 extern void mem_init_0(void);
 
+static char cmd_line[128];
+
 void __init setup_arch(char **cl)
 {
-        linux_cmd_line(cl);
-        panic_blink=linux_panic_blink;
-        linux_thread_info_init((struct thread_info*)(&init_thread_union)+1);
+        *cl=cmd_line;
+        panic_blink=linux_nops->panic_blink;
+        linux_nops->thread_info_init((struct thread_info*)(&init_thread_union)+1);
 
         mem_init_0();
 }
@@ -105,9 +109,24 @@ void __init setup_arch(char **cl)
 int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 {
         if (strcmp(filename, "/bin/init") == 0) {
-		linux_main();
+		linux_nops->main();
 		return 0;
 	}
 	
 	return -1;
+}
+
+int linux_start_kernel(struct linux_native_operations *nops, const char *fmt, ...)
+{
+	va_list ap;
+
+	linux_nops=nops;
+
+	va_start(ap, fmt);
+	vsnprintf(cmd_line, sizeof(cmd_line), fmt, ap);
+	va_end(ap);
+
+	start_kernel();
+
+	return 0;
 }

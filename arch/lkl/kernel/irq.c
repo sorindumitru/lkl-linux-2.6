@@ -56,15 +56,17 @@ void *irq_sem;
 
 int linux_trigger_irq(int irq, void *data)
 {
-	struct irq_shot *is=kmalloc(sizeof(*is), GFP_ATOMIC);
+	struct irq_shot *is;
 
-	if (!is)
+	BUG_ON(linux_nops->sem_up == NULL);
+
+	if (!(is=kmalloc(sizeof(*is), GFP_ATOMIC)))
 		return -ENOMEM;
 
 	is->regs.irq_data=data;
 	list_add_tail(&is->list, &irq_shots[irq]);
 
-	linux_sem_up(irq_sem);
+	linux_nops->sem_up(irq_sem);
 
 	return 0;
 }
@@ -98,12 +100,14 @@ int dequeue_irq(int irq, struct pt_regs *regs)
  */
 void cpu_idle(void)
 {
+	BUG_ON(linux_nops->sem_down == NULL);
+
 	while (1) {
 		struct pt_regs regs;
 		int i;
 
 		do {
-			linux_sem_down(irq_sem);
+			linux_nops->sem_down(irq_sem);
 			for(i=0; i<NR_IRQS; i++)
 				if (dequeue_irq(i, &regs) == 0) 
 					do_IRQ(i, &regs);
@@ -119,10 +123,18 @@ void init_IRQ(void)
 {
 	int i;
 	
+	if (!linux_nops->new_sem) {
+		printk(KERN_INFO "lkl: no IRQ support\n");
+		return;
+	} 
+
+	printk(KERN_INFO "lkl: with IRQ support\n");
+		
 	for(i=0; i<NR_IRQS; i++) {
 		INIT_LIST_HEAD(&irq_shots[i]);
 		set_irq_chip_and_handler(i, &dummy_irq_chip, handle_simple_irq);
 	}
-	irq_sem=linux_sem_new(0);
+
+	irq_sem=linux_nops->new_sem(0);
 	BUG_ON(irq_sem == NULL);
 }
