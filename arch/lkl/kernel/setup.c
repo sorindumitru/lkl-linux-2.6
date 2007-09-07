@@ -58,24 +58,6 @@ void flush_thread(void)
 {
 }
 
-void __udelay(unsigned long usecs)
-{
-
-}
-
-void __ndelay(unsigned long nsecs)
-{
-
-}
-
-void __init time_init(void)
-{
-}
-
-void __devinit calibrate_delay(void)
-{
-}
-
 struct seq_operations cpuinfo_op;
 
 extern void mem_init_0(void);
@@ -91,10 +73,9 @@ void __init setup_arch(char **cl)
         mem_init_0();
 }
 
-
 int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 {
-        if (strcmp(filename, "/bin/init") == 0) {
+        if (strcmp(filename, "/sbin/init") == 0) {
 		linux_nops->main();
 		return 0;
 	}

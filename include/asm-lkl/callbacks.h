@@ -65,6 +65,18 @@ struct linux_native_operations {
 
 	void (*free_sem)(void *sem);
 
+        /*
+         * Request a timer interrupt in delta nanoseconds, i.e. a
+         * linux_trigger_irq(TIMER_IRQ)  call. If delta is zero, cancel
+         * the pending timer. If delta is not zero and a previous timer was
+         * armed, cancel the previous one.
+         */
+	void (*timer)(unsigned long delta);
+        
+        /*
+         * Return the current time in nanoseconds 
+         */
+        unsigned long long (*time)(void);
 };
 
 extern struct linux_native_operations *linux_nops;

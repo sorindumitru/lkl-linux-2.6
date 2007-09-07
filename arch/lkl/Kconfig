@@ -89,6 +89,19 @@ config BLK_DEV_INITRD
 	bool
 	default n
 
+config GENERIC_CLOCKEVENTS
+	bool
+	default y
+
+config NO_HZ
+	bool
+	default y
+
+config TICK_ONESHOT
+	bool
+	default y
+
+
 # Define the architecture
 config LKL
 	bool
