@@ -5,15 +5,19 @@ struct thread_info *_current_thread_info=&init_thread_union.thread_info;
 
 asmlinkage void schedule_tail(struct task_struct *prev);
 
-void switch_to(struct task_struct *prev, struct task_struct *next, struct task_struct *last)
+static struct task_struct *_last;
+
+void _switch_to(struct task_struct **prev, struct task_struct *next, struct task_struct *last)
 {
+	_last=last;
         _current_thread_info=task_thread_info(next);
         //kind of a hack because technically we don't run from the next process context
         if (!next->thread.sched_tail) {
                 next->thread.sched_tail=1;
-                schedule_tail(prev);
+                schedule_tail(*prev);
         }
-        linux_nops->switch_to(task_thread_info(prev)+1, task_thread_info(next)+1);
+        linux_nops->context_switch(task_thread_info(*prev)+1, task_thread_info(next)+1);
+	*prev=_last;
 }
 
 int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,

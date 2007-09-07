@@ -19,7 +19,7 @@ struct linux_native_operations {
 
 	/*
 	 * Create a new stopped thread and arrange it to run f(arg) when
-	 * started (via linux_switch_to). The application can use the
+	 * started (via context_switch). The application can use the
 	 * thread_info area to store information about this thread.
 	 */
 	int (*new_thread)(int (*f)(void*), void *arg, void *thread_info);
@@ -30,7 +30,7 @@ struct linux_native_operations {
 	 * application thread info) should be stopped, and the thread
 	 * described by the next application thread info should be started.
 	 */
-	void (*switch_to)(void *prev, void *next);
+	void (*context_switch)(void *prev, void *next);
 
 	/*
 	 * Free the thread described by thread_info.
