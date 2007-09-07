@@ -76,10 +76,24 @@ void __init setup_arch(char **cl)
 int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 {
         if (strcmp(filename, "/sbin/init") == 0) {
+		/* 
+		 * Let some time pass so that any pending RCU will run. This in
+		 * particular clears up the khelper zombies. We want them dead
+		 * before the application starts taking control.
+		 */
+		schedule_timeout_uninterruptible(10);
 		linux_nops->main();
+		
 		return 0;
 	}
-	
+
+	/* 
+	 * Don't pass through zombie, go dead directly. We do this to clean up
+	 * khelper threads when hotplug is enabled. I wonder why we don't have
+	 * khelper zombies on regular systems :-?
+	 */
+	current->exit_signal=-1;
+
 	return -1;
 }
 
