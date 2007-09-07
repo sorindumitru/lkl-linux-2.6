@@ -32,7 +32,7 @@ static struct clocksource clocksource = {
 	.rating = 499,
 	.read	= clock_read,
         .mult   = 1, 
-	//.mask	= CLOCKSOURCE_MASK(32),
+	.mask	= CLOCKSOURCE_MASK(64),
 	.shift	= 0,
 };
 
@@ -56,9 +56,6 @@ static void clockevent_set_mode(enum clock_event_mode mode,
 static irqreturn_t timer_irq(int irq, void *dev_id)
 {
         struct clock_event_device *dev=(struct clock_event_device*)dev_id;
-
-
-        printk("timerrrrrrr\n");
 
         dev->event_handler(dev);
         
