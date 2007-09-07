@@ -81,7 +81,8 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 		 * particular clears up the khelper zombies. We want them dead
 		 * before the application starts taking control.
 		 */
-		schedule_timeout_uninterruptible(10);
+		if (linux_nops->new_sem)
+			schedule_timeout_uninterruptible(10);
 		linux_nops->main();
 		
 		return 0;
