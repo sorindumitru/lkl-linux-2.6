@@ -10,6 +10,12 @@
 unsigned long phys_mem,  phys_mem_size;
 unsigned long empty_zero_page;
 
+
+void show_mem(void)
+{
+}
+
+
 void free_initmem(void)
 {
 }

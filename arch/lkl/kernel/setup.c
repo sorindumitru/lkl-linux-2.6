@@ -76,10 +76,6 @@ void __devinit calibrate_delay(void)
 {
 }
 
-void show_mem(void)
-{
-}
-
 struct seq_operations cpuinfo_op;
 
 extern void mem_init_0(void);
