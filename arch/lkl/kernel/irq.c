@@ -5,6 +5,7 @@
 #include <asm/irq_regs.h>
 #include <linux/sched.h>
 #include <linux/seq_file.h>
+#include <linux/tick.h>
 
 #include <asm/callbacks.h>
 
@@ -137,9 +138,9 @@ void cpu_idle(void)
 	BUG_ON(linux_nops->sem_down == NULL);
 
 	while (1) {
-
-                run_irqs();
-
+		tick_nohz_stop_sched_tick();		
+		run_irqs();
+		tick_nohz_restart_sched_tick();
 		preempt_enable_no_resched();
 		schedule();
 		preempt_disable();
