@@ -58,12 +58,6 @@ void flush_thread(void)
 {
 }
 
-int show_interrupts(struct seq_file *p, void *v)
-{
-        return 0;
-}
-
-
 void __udelay(unsigned long usecs)
 {
 
@@ -72,10 +66,6 @@ void __udelay(unsigned long usecs)
 void __ndelay(unsigned long nsecs)
 {
 
-}
-
-void __init trap_init(void)
-{
 }
 
 void __init time_init(void)

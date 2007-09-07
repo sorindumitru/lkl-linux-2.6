@@ -1,6 +1,8 @@
 #ifndef _ASM_LKL_CALLBACKS_H
 #define _ASM_LKL_CALLBACKS_H
 
+#include <asm/irq.h>
+
 struct linux_native_operations {
 	/*
 	 * Called during a kernel panic. 	 
@@ -68,10 +70,19 @@ struct linux_native_operations {
 extern struct linux_native_operations *linux_nops;
 
 /*
- * Signal an interrupt. data will be passed in irq_data of the pt_regs
- * structure. (see get_irq_regs)
+ * Signal an interrupt. Can be called at any time, including early boot time. 
  */
-int linux_trigger_irq(int irq, void *data);
+void linux_trigger_irq(int irq);
+
+
+/*
+ * Signal an interrupt with data to be passed in irq_data of the pt_regs
+ * structure. (see get_irq_regs). For device driver convenience. Can't be called
+ * at during early boot time, before the SLAB is initialized.
+ */
+int linux_trigger_irq_with_data(int irq, void *data);
+
+
 
 /*
  * Register the native operations and start the kernel.
