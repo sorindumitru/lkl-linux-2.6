@@ -34,7 +34,7 @@ static struct clocksource clocksource = {
         .mult   = 1, 
 	.mask	= CLOCKSOURCE_MASK(64),
 	.shift	= 0,
-	.flags  = CLOCK_SOURCE_IS_CONTINUOUS|CLOCK_SOURCE_VALID_FOR_HRES
+	.flags  = CLOCK_SOURCE_IS_CONTINUOUS
 };
 
 static void clockevent_set_mode(enum clock_event_mode mode,
