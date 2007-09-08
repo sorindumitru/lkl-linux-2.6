@@ -9,6 +9,7 @@
 #include <linux/mqueue.h>
 #include <linux/seq_file.h>
 #include <linux/start_kernel.h>
+#include <linux/syscalls.h>
 
 #include <asm/callbacks.h>
 
@@ -73,18 +74,35 @@ void __init setup_arch(char **cl)
         mem_init_0();
 }
 
+static int run_main(void *arg)
+{
+	linux_nops->main();
+	do_exit(0);
+	return 0;
+}
+
 int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 {
         if (strcmp(filename, "/sbin/init") == 0) {
 		/* 
-		 * Let some time pass so that any pending RCU will run. This in
-		 * particular clears up the khelper zombies. We want them dead
-		 * before the application starts taking control.
+		 * Let some time pass so that any pending RCU and softirqs will
+		 * run. We need this to:
+		 * - cleanup the khelper zombies
+		 * - install the clock source (and switch to NO_HZ mode);
+		 *
+		 * We want this to happen before the application starts. This
+		 * quirks are needed because we dont run IRQs
+		 * asynchronously. Maybe better abstractions are needed to make
+		 * this more obvious.
 		 */
 		if (linux_nops->new_sem)
-			schedule_timeout_uninterruptible(10);
-		linux_nops->main();
-		
+			schedule_timeout_uninterruptible(100); 
+
+		kernel_thread(run_main, NULL, 0);
+
+		while (sys_wait4(-1, NULL, __WCLONE, 0) != -ECHILD)
+			;
+
 		return 0;
 	}
 
