@@ -48,22 +48,23 @@ struct linux_native_operations {
 
 	/*
 	 * This routine is called after the kernel initialization is
-	 * complete. It should never exit. 
+	 * complete. When this function returns, the linux kernel will shutdown,
+	 * and eventually the linux_start_kernel function will return.
 	 */
 	void (*main)(void);
 
 	/*
-	 * Semaphore routines to create, destroy increment and
-	 * decrement (and possible block the current thread, and whole
-	 * kernel for that matter)the semphore count. 
+	 * If no exit_idle operations are pending, block until we receive such
+	 * an operation. This is called by the linux kernel when there is no
+	 * work to be done.
 	 */
-	void* (*new_sem)(int count);
+	void (*enter_idle)(void);
 
-	void (*sem_up)(void *sem);
-
-	void (*sem_down)(void *sem);
-
-	void (*free_sem)(void *sem);
+	/*
+	 * Unblock the enter_idle operation. This will resume the linux kernel
+	 * and will usually be called from linux_trigger_irq() routines. 
+	 */
+	void (*exit_idle)(void);
 
         /*
          * Request a timer interrupt in delta nanoseconds, i.e. a
@@ -77,6 +78,17 @@ struct linux_native_operations {
          * Return the current time in nanoseconds 
          */
         unsigned long long (*time)(void);
+
+	/*
+	 * Kernel has been halted, linux_start_kernel will exit soon. This is
+	 * the chance for the app to clean-up any resources allocated so far. Do
+	 * not forget to:
+	 *
+	 * - free the  memory allocated via mem_init
+	 * - stop any pending timers?
+	 * 
+	 */
+	void (*halt)(void);
 };
 
 extern struct linux_native_operations *linux_nops;
@@ -97,7 +109,8 @@ int linux_trigger_irq_with_data(int irq, void *data);
 
 
 /*
- * Register the native operations and start the kernel.
+ * Register the native operations and start the kernel. The function returns
+ * only after the kernel shutdowns. 
  */
 int linux_start_kernel(struct linux_native_operations *lnops, const char *cmd_line, ...);
 

@@ -10,6 +10,7 @@
 #include <linux/seq_file.h>
 #include <linux/start_kernel.h>
 #include <linux/syscalls.h>
+#include <linux/reboot.h>
 
 #include <asm/callbacks.h>
 
@@ -42,17 +43,29 @@ long arch_ptrace(struct task_struct *child, long request, long addr, long data)
 
 void (*pm_power_off)(void)=NULL;
 
+int linux_halted=0;
 
-void machine_restart(char * __unused)
+void kill_all_threads(void)
 {
+	struct task_struct *p;
+
+	for_each_process(p) 
+		free_thread_info(task_thread_info(p));
 }
 
 void machine_halt(void)
 {
+	linux_halted=1;
 }
 
 void machine_power_off(void)
 {
+	machine_halt();
+}
+
+void machine_restart(char * __unused)
+{
+	machine_halt();
 }
 
 void flush_thread(void)
@@ -83,35 +96,42 @@ static int run_main(void *arg)
 
 int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 {
-        if (strcmp(filename, "/sbin/init") == 0) {
-		/* 
-		 * Let some time pass so that any pending RCU and softirqs will
-		 * run. We need this to:
-		 * - cleanup the khelper zombies
-		 * - install the clock source (and switch to NO_HZ mode);
-		 *
-		 * We want this to happen before the application starts. This
-		 * quirks are needed because we dont run IRQs
-		 * asynchronously. Maybe better abstractions are needed to make
-		 * this more obvious.
-		 */
-		if (linux_nops->new_sem)
-			schedule_timeout_uninterruptible(100); 
-
-		kernel_thread(run_main, NULL, 0);
-
-		while (sys_wait4(-1, NULL, __WCLONE, 0) != -ECHILD)
-			;
-
-		return 0;
-	}
-
 	/* 
 	 * Don't pass through zombie, go dead directly. We do this to clean up
 	 * khelper threads when hotplug is enabled. I wonder why we don't have
 	 * khelper zombies on regular systems :-?
 	 */
 	current->exit_signal=-1;
+
+        if (strcmp(filename, "/sbin/init") == 0) {
+
+		if (linux_nops->enter_idle) {
+			/* 
+			 * Run any pending irqs, softirqs and rcus. We do this
+			 * here so that we:
+			 * - cleanup the khelper zombies
+			 * - install the clock source (and switch to NO_HZ mode)
+			 */
+			synchronize_rcu();
+
+			kernel_thread(run_main, NULL, 0);
+
+			while (sys_wait4(-1, NULL, __WCLONE, 0) != -ECHILD)
+				;
+
+			kernel_halt();
+
+			/* 
+			 * We want to kill init without panic()ing
+			 */
+			init_pid_ns.child_reaper=0;
+			do_exit(0);
+		} else
+			linux_nops->main();
+
+		return 0;
+	}
+	
 
 	return -1;
 }
@@ -127,6 +147,8 @@ int linux_start_kernel(struct linux_native_operations *nops, const char *fmt, ..
 	va_end(ap);
 
 	start_kernel();
+
+	kill_all_threads();
 
 	return 0;
 }

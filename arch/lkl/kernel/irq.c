@@ -52,19 +52,20 @@ struct irq_shot {
         int no_data_count;
 } irq_shots[NR_IRQS];
 
-void *irq_sem;
-
 void linux_trigger_irq(int irq)
 {
+	BUG_ON(linux_nops->exit_idle == NULL);
+
         irq_shots[irq].no_data_count++;
-        linux_nops->sem_up(irq_sem);
+
+        linux_nops->exit_idle();
 }
 
 int linux_trigger_irq_with_data(int irq, void *data)
 {
 	struct irq_data *is;
 
-	BUG_ON(linux_nops->sem_up == NULL);
+	BUG_ON(linux_nops->exit_idle == NULL);
 
 	if (!(is=kmalloc(sizeof(*is), GFP_ATOMIC)))
 		return -ENOMEM;
@@ -72,7 +73,7 @@ int linux_trigger_irq_with_data(int irq, void *data)
 	is->regs.irq_data=data;
 	list_add_tail(&is->list, &irq_shots[irq].data_list);
 
-	linux_nops->sem_up(irq_sem);
+        linux_nops->exit_idle();
 
 	return 0;
 }
@@ -115,7 +116,7 @@ void run_irqs(void)
 		struct pt_regs regs;
 		int i;
 
-                linux_nops->sem_down(irq_sem);
+                linux_nops->enter_idle();
 
                 for(i=0; i<NR_IRQS; i++) {
                         while (dequeue_nodata(i, &regs) == 0)
@@ -128,6 +129,14 @@ void run_irqs(void)
         local_irq_enable();
 }
 
+extern int linux_halted;
+static struct rcu_head rcu_head;
+static int rcu_done;
+static void rcu_func(struct rcu_head *h)
+{
+	rcu_done=1;
+}
+
 /*
  * We run the IRQ handlers from here so that we don't have to
  * interrupt the current thread since the application might not be
@@ -135,9 +144,10 @@ void run_irqs(void)
  */
 void cpu_idle(void)
 {
-	BUG_ON(linux_nops->sem_down == NULL);
 
-	while (1) {
+	BUG_ON(linux_nops->enter_idle == NULL);
+
+	while (!linux_halted) {
 		tick_nohz_stop_sched_tick();		
 		run_irqs();
 		tick_nohz_restart_sched_tick();
@@ -145,22 +155,27 @@ void cpu_idle(void)
 		schedule();
 		preempt_disable();
 	}
+
+	/* flush all rcu pending operations */
+	call_rcu(&rcu_head, rcu_func);
+	while (!rcu_done) {
+		tick_nohz_stop_sched_tick();		
+		run_irqs();
+		tick_nohz_restart_sched_tick();
+	}
 }
 
 void init_IRQ(void)
 {
 	int i;
 	
-	if (!linux_nops->new_sem || !linux_nops->sem_up || !linux_nops->sem_down) 
+	if (!linux_nops->enter_idle || !linux_nops->exit_idle)
 		return;
 
 	for(i=0; i<NR_IRQS; i++) {
 		INIT_LIST_HEAD(&irq_shots[i].data_list);
 		set_irq_chip_and_handler(i, &dummy_irq_chip, handle_simple_irq);
 	}
-
-	irq_sem=linux_nops->new_sem(0);
-	BUG_ON(irq_sem == NULL);
 
 	printk(KERN_INFO "lkl: with IRQ support\n");
 }

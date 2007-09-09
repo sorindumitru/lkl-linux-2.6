@@ -98,9 +98,9 @@ static struct irqaction irq0  = {
 
 void __init time_init(void)
 {
-        if (!linux_nops->new_sem || !linux_nops->sem_up || 
-            !linux_nops->sem_down || !linux_nops->timer || !linux_nops->time)
-                return;
+        if (!linux_nops->enter_idle || !linux_nops->exit_idle || 
+	    !linux_nops->timer || !linux_nops->time) 
+		return;
 
 	setup_irq(0, &irq0);
 
