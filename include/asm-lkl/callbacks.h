@@ -9,15 +9,13 @@ struct linux_native_operations {
 	 */
 	long (*panic_blink)(long time);
 
-	/*
-	 * The size of the application thread info.
-	 */
-	int thread_info_size;
 
 	/*
-	 * Initialize the application thread info.
+	 * Allocate and initialize the application thread info and return a
+	 * pointer to it. This pointer will be passed to subsequent
+	 * new_thread(), context_switch() and free_thread() routines. 
 	 */
-	void (*thread_info_init)(void *thread_data);
+	void* (*thread_info_alloc)(void);
 
 	/*
 	 * Create a new stopped thread and arrange it to run f(arg) when
@@ -35,7 +33,18 @@ struct linux_native_operations {
 	void (*context_switch)(void *prev, void *next);
 
 	/*
-	 * Free the thread described by thread_info.
+	 * The kernel says that from its point of view the thread is dead. All
+	 * data structures have been freed and the thread has been switched away
+	 * from (with context_switch). The application must clean any resources
+	 * associated with this linux thread (including the native thread).
+	 *
+	 * This notification is given from another thread context then the dead
+	 * one, so either the application has to be able to terminate threads
+	 * asynchronously, either it needs a way to work around that (for
+	 * example by terminating the thread in the context_switch routine,
+	 * since it is guaranteed that the last operation of the dying thread is
+	 * context_switch).
+	 * 
 	 */
 	void (*free_thread)(void *thread_info);
 

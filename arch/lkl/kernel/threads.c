@@ -7,53 +7,64 @@ asmlinkage void schedule_tail(struct task_struct *prev);
 
 static struct task_struct *_last;
 
+static inline void* task_private_thread_info(struct task_struct *task)
+{
+	return private_thread_info(task_thread_info(task));
+}
+
 void _switch_to(struct task_struct **prev, struct task_struct *next, struct task_struct *last)
 {
 	_last=last;
         _current_thread_info=task_thread_info(next);
-        //kind of a hack because technically we don't run from the next process context
-        if (!next->thread.sched_tail) {
-                next->thread.sched_tail=1;
-                schedule_tail(*prev);
-        }
-        linux_nops->context_switch(task_thread_info(*prev)+1, task_thread_info(next)+1);
+        linux_nops->context_switch(task_private_thread_info(*prev), task_private_thread_info(next));
 	*prev=_last;
+}
+
+struct thread_bootstrap_arg {
+	int (*f)(void*);
+	void *arg;
+};
+
+static int thread_bootstrap(void *arg)
+{
+	struct thread_bootstrap_arg *tba=(struct thread_bootstrap_arg*)arg;
+
+	schedule_tail(_last);
+	kfree(tba);
+
+	return tba->f(tba->arg);
 }
 
 int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,
 	unsigned long unused,
 	struct task_struct * p, struct pt_regs * regs)
 {
-        int (*f)(void*)=(int (*)(void*))esp;
-        void *arg=(void*)unused;
+	struct thread_bootstrap_arg *tba=kmalloc(sizeof(*tba), GFP_KERNEL);
 
-        p->thread.sched_tail=0;
-        return linux_nops->new_thread(f, arg, task_thread_info(p)+1);
+	tba->f = (int (*)(void*))esp;
+	tba->arg= (void*)unused;
+
+        return linux_nops->new_thread(thread_bootstrap, tba, task_private_thread_info(p));
 }
 
 struct thread_info* alloc_thread_info(struct task_struct *task)
 {
-        struct thread_info *ti=kmalloc(sizeof(struct thread_info)+linux_nops->thread_info_size, GFP_KERNEL);
+        struct __thread_info *ti=kmalloc(sizeof(struct __thread_info), GFP_KERNEL);
 
         if (!ti)
                 return NULL;
-        linux_nops->thread_info_init(ti+1);
-        return ti;
+        ti->private=linux_nops->thread_info_alloc();
+        return (struct thread_info*)ti;
 }
 
 void free_thread_info(struct thread_info *ti)
 {
-        linux_nops->free_thread(ti+1);
-        kfree(ti);
+        linux_nops->free_thread(private_thread_info(ti));
+	kfree(ti);
 }
 
 void show_stack(struct task_struct *task, unsigned long *esp)
 {
-}
-
-void* current_private_thread_info(void)
-{
-        return (void*)(current_thread_info()+1);
 }
 
 int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags)

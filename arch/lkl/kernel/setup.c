@@ -49,8 +49,10 @@ void kill_all_threads(void)
 {
 	struct task_struct *p;
 
-	for_each_process(p) 
+	for_each_process(p) {
+		BUG_ON(p->state == TASK_RUNNING);
 		free_thread_info(task_thread_info(p));
+	}
 }
 
 void machine_halt(void)
@@ -82,7 +84,7 @@ void __init setup_arch(char **cl)
 {
         *cl=cmd_line;
         panic_blink=linux_nops->panic_blink;
-        linux_nops->thread_info_init((struct thread_info*)(&init_thread_union)+1);
+	set_private_thread_info(&init_thread_union.thread_info, linux_nops->thread_info_alloc());
 
         mem_init_0();
 }

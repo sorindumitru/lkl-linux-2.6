@@ -108,6 +108,8 @@ static int dequeue_nodata(int irq, struct pt_regs *regs)
         return 0;
 }
 
+extern int linux_halted;
+
 void run_irqs(void)
 {
         local_irq_disable();
@@ -116,7 +118,8 @@ void run_irqs(void)
 		struct pt_regs regs;
 		int i;
 
-                linux_nops->enter_idle();
+		if (!linux_halted)
+			linux_nops->enter_idle();
 
                 for(i=0; i<NR_IRQS; i++) {
                         while (dequeue_nodata(i, &regs) == 0)
@@ -124,18 +127,19 @@ void run_irqs(void)
                         while (dequeue_data(i, &regs) == 0) 
                                 do_IRQ(i, &regs);
                 }
-        } while (!need_resched());
+        } while (!need_resched() && !linux_halted);
 
         local_irq_enable();
 }
 
-extern int linux_halted;
+
 static struct rcu_head rcu_head;
-static int rcu_done;
+static int rcu_done, rcu_start;
 static void rcu_func(struct rcu_head *h)
 {
-	rcu_done=1;
+       rcu_done=1;
 }
+
 
 /*
  * We run the IRQ handlers from here so that we don't have to
@@ -144,25 +148,40 @@ static void rcu_func(struct rcu_head *h)
  */
 void cpu_idle(void)
 {
+	int loop=1;
 
 	BUG_ON(linux_nops->enter_idle == NULL);
 
-	while (!linux_halted) {
+	while (loop) {
+		/*
+		 * We need to exit, but before we can do so we need to run any
+		 * pending jobs, like RCU calls, IRQs, or runable processes.
+		 */
+		if (linux_halted) {
+			if (!rcu_start) {
+				call_rcu(&rcu_head, rcu_func);
+				rcu_start=1;
+			}
+			loop--;
+		}
 		tick_nohz_stop_sched_tick();		
 		run_irqs();
-		tick_nohz_restart_sched_tick();
-		preempt_enable_no_resched();
-		schedule();
-		preempt_disable();
+		if (need_resched() || !rcu_done) {
+			/* 
+			 * We have either runable processes or RCU calls to 
+			 * process. Don't exit this turn. Maybe next time.
+			 */ 
+			if (linux_halted)
+				loop++;
+			tick_nohz_restart_sched_tick();
+			preempt_enable_no_resched();
+			schedule();
+			preempt_disable();
+		}
+
+		
 	}
 
-	/* flush all rcu pending operations */
-	call_rcu(&rcu_head, rcu_func);
-	while (!rcu_done) {
-		tick_nohz_stop_sched_tick();		
-		run_irqs();
-		tick_nohz_restart_sched_tick();
-	}
 }
 
 void init_IRQ(void)

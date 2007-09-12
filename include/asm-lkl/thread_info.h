@@ -21,11 +21,29 @@ struct thread_info {
 	struct restart_block    restart_block;
 };
 
-struct thread_struct {
-        int sched_tail;
+/* 
+ * Hide private here, so that it does not get overwritten in dup_task_struct.
+ */
+struct __thread_info {
+	struct thread_info ti;
+	void *private;
 };
 
-#define INIT_THREAD { .sched_tail = 1 } 
+static inline void* private_thread_info(struct thread_info *ti)
+{
+
+	return ((struct __thread_info*)ti)->private;
+}
+
+static inline void set_private_thread_info(struct thread_info *ti, void *value)
+{
+	((struct __thread_info*)ti)->private=value;
+}
+
+struct thread_struct {
+};
+
+#define INIT_THREAD {  } 
 
 #define PREEMPT_ACTIVE		0x10000000
 
@@ -86,7 +104,6 @@ static inline unsigned long thread_saved_pc(struct task_struct *tsk)
 #define switch_to(prev, next, last) _switch_to(&prev, next, last)
 extern void _switch_to(struct task_struct**, struct task_struct*, struct task_struct*);
 extern int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags);
-
 
 #endif
 
