@@ -65,9 +65,10 @@ struct linux_native_operations {
 	/*
 	 * If no exit_idle operations are pending, block until we receive such
 	 * an operation. This is called by the linux kernel when there is no
-	 * work to be done.
+	 * work to be done. If halted is set, then the application should not
+	 * block, but return as soon as possible.
 	 */
-	void (*enter_idle)(void);
+	void (*enter_idle)(int halted);
 
 	/*
 	 * Unblock the enter_idle operation. This will resume the linux kernel
@@ -77,9 +78,8 @@ struct linux_native_operations {
 
         /*
          * Request a timer interrupt in delta nanoseconds, i.e. a
-         * linux_trigger_irq(TIMER_IRQ)  call. If delta is zero, cancel
-         * the pending timer. If delta is not zero and a previous timer was
-         * armed, cancel the previous one.
+         * linux_trigger_irq(TIMER_IRQ) call. If delta is zero, cancel
+         * the pending timer. 
          */
 	void (*timer)(unsigned long delta);
         
@@ -94,7 +94,6 @@ struct linux_native_operations {
 	 * not forget to:
 	 *
 	 * - free the  memory allocated via mem_init
-	 * - stop any pending timers?
 	 * 
 	 */
 	void (*halt)(void);

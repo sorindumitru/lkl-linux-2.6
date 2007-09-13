@@ -118,8 +118,7 @@ void run_irqs(void)
 		struct pt_regs regs;
 		int i;
 
-		if (!linux_halted)
-			linux_nops->enter_idle();
+		linux_nops->enter_idle(linux_halted);
 
                 for(i=0; i<NR_IRQS; i++) {
                         while (dequeue_nodata(i, &regs) == 0)
