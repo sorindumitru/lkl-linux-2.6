@@ -152,6 +152,8 @@ int linux_start_kernel(struct linux_native_operations *nops, const char *fmt, ..
 
 	kill_all_threads();
 
+	linux_nops->timer(0);
+
 	linux_nops->halt();
 
 	return 0;
