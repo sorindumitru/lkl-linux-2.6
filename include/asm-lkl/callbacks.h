@@ -1,7 +1,7 @@
 #ifndef _ASM_LKL_CALLBACKS_H
 #define _ASM_LKL_CALLBACKS_H
 
-#include <asm/irq.h>
+#include "irq.h"
 
 struct linux_native_operations {
 	/*
