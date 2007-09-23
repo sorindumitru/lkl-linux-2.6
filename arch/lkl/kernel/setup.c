@@ -105,7 +105,7 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 	 */
 	current->exit_signal=-1;
 
-        if (strcmp(filename, "/sbin/init") == 0) {
+        if (strcmp(filename, "/init") == 0) {
 
 		if (linux_nops->enter_idle) {
 			/* 
@@ -158,3 +158,22 @@ int linux_start_kernel(struct linux_native_operations *nops, const char *fmt, ..
 
 	return 0;
 }
+
+
+static int __init fs_setup(void)
+{
+	int fd;
+
+	/* 
+	 * To skip mounting the "real" rootfs. The current one (ramfs) is good
+	 * enough for us.
+	 */
+	fd=sys_open("/init", O_CREAT, 0600);
+	BUG_ON(fd < 0);
+	sys_close(fd);
+	
+	return 0;
+}
+
+late_initcall(fs_setup);
+

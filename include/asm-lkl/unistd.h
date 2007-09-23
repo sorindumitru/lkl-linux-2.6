@@ -47,6 +47,13 @@ asmlinkage long sys_getdents(unsigned int fd, struct linux_dirent __user *dirent
 asmlinkage long sys_newstat(char __user *filename, struct stat __user *statbuf);
 asmlinkage long sys_utimes(const char __user *filename, struct timeval __user *utimes);
 asmlinkage long sys_nanosleep(struct timespec __user *rqtp, struct timespec __user *rmtp);
+asmlinkage long sys_mknod(const char __user *filename, int mode,
+				unsigned dev);
+asmlinkage long sys_mount(char __user *dev_name, char __user *dir_name,
+				char __user *type, unsigned long flags,
+				void __user *data);
+asmlinkage long sys_umount(char __user *name, int flags);
+asmlinkage long sys_chdir(const char __user *filename);
 
 #endif 
 
