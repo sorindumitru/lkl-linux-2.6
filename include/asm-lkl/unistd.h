@@ -27,7 +27,6 @@ struct linux_dirent {
 };
 
 asmlinkage long sys_sync(void);
-asmlinkage long sys_mount(char __user *dev_name, char __user *dir_name,  char __user *type, unsigned long flags,    void __user *data);
 asmlinkage long sys_reboot(int magic1, int magic2, unsigned int cmd,  void __user *arg);
 asmlinkage ssize_t sys_write(unsigned int fd, const char __user *buf,    size_t count);
 asmlinkage long sys_close(unsigned int fd);
@@ -49,7 +48,7 @@ asmlinkage long sys_utimes(const char __user *filename, struct timeval __user *u
 asmlinkage long sys_nanosleep(struct timespec __user *rqtp, struct timespec __user *rmtp);
 asmlinkage long sys_mknod(const char __user *filename, int mode,
 				unsigned dev);
-asmlinkage long sys_mount(char __user *dev_name, char __user *dir_name,
+asmlinkage long sys_safe_mount(char __user *dev_name, char __user *dir_name,
 				char __user *type, unsigned long flags,
 				void __user *data);
 asmlinkage long sys_umount(char __user *name, int flags);
