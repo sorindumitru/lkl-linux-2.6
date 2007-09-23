@@ -55,6 +55,7 @@ struct irq_shot {
 void linux_trigger_irq(int irq)
 {
 	BUG_ON(linux_nops->exit_idle == NULL);
+	BUG_ON(irq >= NR_IRQS);
 
         irq_shots[irq].no_data_count++;
 
@@ -66,6 +67,7 @@ int linux_trigger_irq_with_data(int irq, void *data)
 	struct irq_data *is;
 
 	BUG_ON(linux_nops->exit_idle == NULL);
+	BUG_ON(irq >= NR_IRQS);
 
 	if (!(is=kmalloc(sizeof(*is), GFP_ATOMIC)))
 		return -ENOMEM;
