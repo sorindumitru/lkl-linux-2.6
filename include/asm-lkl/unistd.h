@@ -18,6 +18,8 @@
 #include <asm/stat.h>
 #include <asm/fcntl.h>
 #include <linux/time.h>
+#include <asm-generic/statfs.h>
+#include <linux/stat.h>
 
 struct linux_dirent {
 	unsigned long	d_ino;
@@ -53,6 +55,8 @@ asmlinkage long sys_safe_mount(char __user *dev_name, char __user *dir_name,
 				void __user *data);
 asmlinkage long sys_umount(char __user *name, int flags);
 asmlinkage long sys_chdir(const char __user *filename);
+asmlinkage long sys_statfs(const char __user * path,
+				struct statfs __user *buf);
 
 #endif 
 
