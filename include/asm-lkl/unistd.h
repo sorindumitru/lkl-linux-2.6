@@ -57,6 +57,15 @@ asmlinkage long sys_umount(char __user *name, int flags);
 asmlinkage long sys_chdir(const char __user *filename);
 asmlinkage long sys_statfs(const char __user * path,
 				struct statfs __user *buf);
+asmlinkage long sys_chroot(const char __user *filename);
+
+
+extern int sprintf(char * buf, const char * fmt,
+		   ...) __attribute__ ((format (printf, 2, 3)));
+extern int snprintf(char * buf, size_t size, const char * fmt,
+		    ...) __attribute__ ((format (printf, 3, 4)));
+extern int sscanf(const char *, const char *,
+		  ...) __attribute__ ((format (scanf, 2, 3)));
 
 #endif 
 
