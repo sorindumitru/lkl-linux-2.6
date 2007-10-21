@@ -2,6 +2,9 @@
 #define _ASM_LKL_UNISTD_H
 
 
+/*
+ * FIXME: get rid of all this kludge and keep only the linux_syscall interface.
+ */
 #define cond_syscall(x) 
 
 #include <asm-i386/unistd.h>
@@ -50,14 +53,14 @@ asmlinkage long sys_utimes(const char __user *filename, struct timeval __user *u
 asmlinkage long sys_nanosleep(struct timespec __user *rqtp, struct timespec __user *rmtp);
 asmlinkage long sys_mknod(const char __user *filename, int mode,
 				unsigned dev);
-asmlinkage long sys_safe_mount(char __user *dev_name, char __user *dir_name,
-				char __user *type, unsigned long flags,
-				void __user *data);
 asmlinkage long sys_umount(char __user *name, int flags);
 asmlinkage long sys_chdir(const char __user *filename);
 asmlinkage long sys_statfs(const char __user * path,
 				struct statfs __user *buf);
 asmlinkage long sys_chroot(const char __user *filename);
+asmlinkage long sys_safe_mount(char __user *dev_name, char __user *dir_name,
+				char __user *type, unsigned long flags,
+				void __user *data);
 
 
 extern int sprintf(char * buf, const char * fmt,
@@ -68,5 +71,11 @@ extern int sscanf(const char *, const char *,
 		  ...) __attribute__ ((format (scanf, 2, 3)));
 
 #endif 
+
+#define __NR_safe_mount __NR_mount 
+#define __NR_newstat __NR_stat
+#define __NR_newfstat __NR_fstat
+#define __NR_newlstat __NR_lstat
+
 
 #endif
