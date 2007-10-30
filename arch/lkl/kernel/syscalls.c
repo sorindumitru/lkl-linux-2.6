@@ -103,24 +103,6 @@ struct _syscall_req {
 };
 
 
-long linux_syscall(struct syscall_req *sr)
-{
-	int ret;
-
-	if (sr->syscall < 0 || sr->syscall >= NR_syscalls)
-		ret=-ENOSYS;
-	else
-		ret=syscall_table[sr->syscall](sr->params[0],
-						   sr->params[1],
-						   sr->params[2],
-						   sr->params[3],
-						   sr->params[4],
-						   sr->params[5]);
-	sr->ret=ret;
-	sr->done(sr->data);
-	return ret;
-}
-
 static LIST_HEAD(syscall_req_queue);
 static spinlock_t syscall_req_lock=SPIN_LOCK_UNLOCKED;
 DECLARE_WAIT_QUEUE_HEAD(syscall_req_wq);
@@ -152,21 +134,58 @@ static struct _syscall_req* dequeue_syscall_req(void)
 	return sr;
 }
 
-struct syscall_req* linux_wait_syscall_request(void)
+static inline struct _syscall_req* linux_wait_syscall_request(void)
 {
 	struct _syscall_req *sr;
 
 	wait_event(syscall_req_wq, (sr=dequeue_syscall_req()) != NULL);
 
-	return (struct syscall_req*)sr;
+	return sr;
 }
 
+static inline long do_syscall(struct _syscall_req *sr)
+{
+	int ret;
+
+	if (sr->syscall < 0 || sr->syscall >= NR_syscalls || 
+	    syscall_table[sr->syscall] == NULL)
+		ret=-ENOSYS;
+	else
+		ret=syscall_table[sr->syscall](sr->params[0],
+						   sr->params[1],
+						   sr->params[2],
+						   sr->params[3],
+						   sr->params[4],
+						   sr->params[5]);
+	sr->ret=ret;
+	if (sr->done)
+		sr->done(sr->data);
+	return ret;
+}
+
+
+int syscall_thread(void *arg)
+{
+	while (1) {
+		struct _syscall_req *sr=linux_wait_syscall_request();
+		if (sr->syscall == __NR_reboot) {
+			if (sr->done)
+				sr->done(sr->data);
+			goto out;
+		}
+		do_syscall(sr);
+	}
+
+out:
+	do_exit(0);
+	return 0;
+}
 
 static struct irqaction irq1  = {
 	.handler = syscall_irq,
 	.flags = IRQF_DISABLED | IRQF_NOBALANCING,
 	.mask = CPU_MASK_CPU0,
-        .dev_id = &linux_syscall,
+        .dev_id = &syscall_thread,
 	.name = "syscall"
 };
 

@@ -57,10 +57,10 @@ struct linux_native_operations {
 
 	/*
 	 * This routine is called after the kernel initialization is
-	 * complete. When this function returns, the linux kernel will shutdown,
-	 * and eventually the linux_start_kernel function will return.
+	 * complete and before the syscall thread is started. The application
+	 * should do here any initialization it requires. 
 	 */
-	void (*main)(void);
+	int (*init)(void);
 
 	/*
 	 * If no exit_idle operations are pending, block until we receive such
@@ -126,7 +126,7 @@ int linux_start_kernel(struct linux_native_operations *lnops, const char *cmd_li
 /* 
  * WARNING: should match _syscall_req in entry.c 
  */
-struct syscall_req {
+struct linux_syscall_request {
 	/* 
 	 * System call number 
 	 */
@@ -149,7 +149,7 @@ struct syscall_req {
 
 	/* 
 	 * Will be called after the  system call has returned and ret field has been
-	 * populated 
+	 * populated
 	 */
 	void (*done)(void*);
 
@@ -158,19 +158,5 @@ struct syscall_req {
 	 */
 	struct { void *next, *prev; } lh;
 };
-
-/*
- * Wait for a syscall request. Syscall requests are send via
- * linux_trigger_interrupt_with_data(SYSCALL_IRQ, struct syscall_req*).
- */
-struct syscall_req* linux_wait_syscall_request(void);
-
-
-/*
- * Execute a system call. Will populate sr->ret and call sr->done upon system
- * call completion. Should be called from process context. 
- */
-long linux_syscall(struct syscall_req *sr);
-
 
 #endif

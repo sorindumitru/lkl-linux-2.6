@@ -89,12 +89,9 @@ void __init setup_arch(char **cl)
         mem_init_0();
 }
 
-static int run_main(void *arg)
-{
-	linux_nops->main();
-	do_exit(0);
-	return 0;
-}
+extern int syscall_thread(void *arg);
+
+static int init_err;
 
 int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 {
@@ -106,30 +103,29 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 	current->exit_signal=-1;
 
         if (strcmp(filename, "/init") == 0) {
+		/* 
+		 * Run any pending irqs, softirqs and rcus. We do this
+		 * here so that we:
+		 * - cleanup the khelper zombies
+		 * - install the clock source (and switch to NO_HZ mode)
+		 */
+		synchronize_rcu();
 
-		if (linux_nops->enter_idle) {
-			/* 
-			 * Run any pending irqs, softirqs and rcus. We do this
-			 * here so that we:
-			 * - cleanup the khelper zombies
-			 * - install the clock source (and switch to NO_HZ mode)
-			 */
-			synchronize_rcu();
+		if ((init_err=linux_nops->init()) == 0) {
 
-			kernel_thread(run_main, NULL, 0);
+			kernel_thread(syscall_thread, NULL, 0);
 
 			while (sys_wait4(-1, NULL, __WCLONE, 0) != -ECHILD)
 				;
+		}
 
-			kernel_halt();
+		kernel_halt();
 
-			/* 
-			 * We want to kill init without panic()ing
-			 */
-			init_pid_ns.child_reaper=0;
-			do_exit(0);
-		} else
-			linux_nops->main();
+		/* 
+		 * We want to kill init without panic()ing
+		 */
+		init_pid_ns.child_reaper=0;
+		do_exit(0);
 
 		return 0;
 	}
@@ -156,7 +152,7 @@ int linux_start_kernel(struct linux_native_operations *nops, const char *fmt, ..
 
 	linux_nops->halt();
 
-	return 0;
+	return init_err;
 }
 
 
