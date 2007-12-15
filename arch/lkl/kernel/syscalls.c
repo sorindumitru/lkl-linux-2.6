@@ -85,6 +85,7 @@ void init_syscall_table(void)
 	INIT_STE(getdents);
 	INIT_STE(newstat);
 	INIT_STE(utimes);
+	INIT_STE(utime);
 	INIT_STE(nanosleep);
 	INIT_STE(mknod);
 	INIT_STE(safe_mount);
@@ -92,6 +93,7 @@ void init_syscall_table(void)
 	INIT_STE(chdir);
 	INIT_STE(statfs);
 	INIT_STE(chroot);
+	INIT_STE(getcwd);
 }
 
 struct _syscall_req {
