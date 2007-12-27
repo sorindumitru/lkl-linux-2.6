@@ -20,6 +20,7 @@
 #include <linux/time.h>
 #include <asm-generic/statfs.h>
 #include <linux/stat.h>
+#include <linux/utime.h>
 
 struct linux_dirent {
 	unsigned long	d_ino;

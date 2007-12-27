@@ -25,6 +25,6 @@ KALLSYMS += --symbol-prefix=$(shell echo | $(CROSS_COMPILE)cpp -dM | grep USER_L
 KBUILD_DEFCONFIG := defconfig
 
 core-y += $(arch_dir)/kernel/
-lib-y  += $(arch_dir)/lib/
+libs-y  += $(arch_dir)/lib/
 drivers-y += $(LKL_DRIVERS)/
 
