@@ -89,7 +89,7 @@ void __init setup_arch(char **cl)
         mem_init_0();
 }
 
-extern int syscall_thread(void *arg);
+extern int run_syscalls(void);
 
 static int init_err;
 
@@ -111,13 +111,8 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 		 */
 		synchronize_rcu();
 
-		if ((init_err=linux_nops->init()) == 0) {
-
-			kernel_thread(syscall_thread, NULL, 0);
-
-			while (sys_wait4(-1, NULL, __WCLONE, 0) != -ECHILD)
-				;
-		}
+		if (!linux_nops->init || (init_err=linux_nops->init()) == 0)
+			run_syscalls();
 
 		kernel_halt();
 
@@ -134,6 +129,8 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 	return -1;
 }
 
+extern void *halt_data;
+
 int linux_start_kernel(struct linux_native_operations *nops, const char *fmt, ...)
 {
 	va_list ap;
@@ -148,9 +145,20 @@ int linux_start_kernel(struct linux_native_operations *nops, const char *fmt, ..
 
 	kill_all_threads();
 
+	/*
+	 * Stop the timer.
+	 */
 	linux_nops->timer(0);
 
+	/*
+	 * We are almost dead announce application.
+	 */
 	linux_nops->halt();
+
+	/* 
+	 * Finish the system call. 
+	 */
+	linux_nops->syscall_done(halt_data);
 
 	return init_err;
 }

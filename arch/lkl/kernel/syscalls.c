@@ -94,11 +94,10 @@ void init_syscall_table(void)
 	INIT_STE(chroot);
 }
 
-struct _syscall_req {
+struct syscall_req {
 	int syscall;
 	long params[6], ret;
 	void *data;
-	void (*done)(void*);
 	struct list_head lh;
 };
 
@@ -110,7 +109,7 @@ DECLARE_WAIT_QUEUE_HEAD(syscall_req_wq);
 static irqreturn_t syscall_irq(int irq, void *dev_id)
 {
 	struct pt_regs *regs=get_irq_regs();
-	struct _syscall_req *sr=regs->irq_data;
+	struct syscall_req *sr=regs->irq_data;
 
 	spin_lock(&syscall_req_lock);
 	list_add(&sr->lh, &syscall_req_queue);
@@ -121,9 +120,9 @@ static irqreturn_t syscall_irq(int irq, void *dev_id)
         return IRQ_HANDLED;
 }
 
-static struct _syscall_req* dequeue_syscall_req(void)
+static struct syscall_req* dequeue_syscall_req(void)
 {
-	struct _syscall_req *sr=NULL;
+	struct syscall_req *sr=NULL;
 	spin_lock(&syscall_req_lock);
 	if (!list_empty(&syscall_req_queue)) {
 		sr=list_first_entry(&syscall_req_queue, typeof(*sr), lh);
@@ -134,16 +133,16 @@ static struct _syscall_req* dequeue_syscall_req(void)
 	return sr;
 }
 
-static inline struct _syscall_req* linux_wait_syscall_request(void)
+static inline struct syscall_req* linux_wait_syscall_request(void)
 {
-	struct _syscall_req *sr;
+	struct syscall_req *sr;
 
 	wait_event(syscall_req_wq, (sr=dequeue_syscall_req()) != NULL);
 
 	return sr;
 }
 
-static inline long do_syscall(struct _syscall_req *sr)
+static inline long do_syscall(struct syscall_req *sr)
 {
 	int ret;
 
@@ -158,26 +157,20 @@ static inline long do_syscall(struct _syscall_req *sr)
 						   sr->params[4],
 						   sr->params[5]);
 	sr->ret=ret;
-	if (sr->done)
-		sr->done(sr->data);
+	linux_nops->syscall_done(sr->data);
 	return ret;
 }
 
 
-int syscall_thread(void *arg)
+int run_syscalls(void)
 {
 	while (1) {
-		struct _syscall_req *sr=linux_wait_syscall_request();
-		if (sr->syscall == __NR_reboot) {
-			if (sr->done)
-				sr->done(sr->data);
-			goto out;
-		}
+		struct syscall_req *sr=linux_wait_syscall_request();
+		if (sr->syscall == __NR_reboot) 
+			break;
 		do_syscall(sr);
 	}
 
-out:
-	do_exit(0);
 	return 0;
 }
 
@@ -185,7 +178,7 @@ static struct irqaction irq1  = {
 	.handler = syscall_irq,
 	.flags = IRQF_DISABLED | IRQF_NOBALANCING,
 	.mask = CPU_MASK_CPU0,
-        .dev_id = &syscall_thread,
+        .dev_id = &irq1,
 	.name = "syscall"
 };
 
@@ -196,5 +189,162 @@ int __init syscall_init(void)
 	printk("lkl: syscall interface initialized\n");
 	return 0;
 }
+
+/*
+ * The system call stubs, provided for application convenince.
+ */
+
+#define SYSCALL_REQ(_syscall, _params...) \
+	struct syscall_req sr = {	\
+		.syscall = __NR_##_syscall,	\
+		.params = { _params },		\
+	};					\
+	sr.data=linux_nops->syscall_prepare(); \
+	linux_trigger_irq_with_data(SYSCALL_IRQ, &sr); \
+	linux_nops->syscall_wait(sr.data); \
+	return sr.ret; \
+
+
+long lkl_sys_sync(void)
+{
+	SYSCALL_REQ(sync);
+}
+
+long lkl_sys_umount(const char *path, int flags)
+{
+	SYSCALL_REQ(umount, (long)path, flags);
+}
+
+ssize_t lkl_sys_write(unsigned int fd, const char *buf, size_t count)
+{
+	SYSCALL_REQ(write, fd, (long)buf, count);
+}
+
+long lkl_sys_close(unsigned int fd)
+{
+	SYSCALL_REQ(close, fd);
+}
+
+long lkl_sys_unlink(const char *pathname)
+{
+	SYSCALL_REQ(unlink, (long)pathname);
+}
+
+long lkl_sys_open(const char *filename, int flags, int mode)
+{
+       SYSCALL_REQ(open, (long)filename, flags, mode);
+}
+
+long lkl_sys_poll(struct pollfd *ufds, unsigned int nfds, long timeout)
+{
+	SYSCALL_REQ(poll, (long)ufds, nfds, timeout);
+}
+
+ssize_t lkl_sys_read(unsigned int fd, char *buf, size_t count)
+{
+	SYSCALL_REQ(read, fd, (long)buf, count);
+}
+
+off_t lkl_sys_lseek(unsigned int fd, off_t offset, unsigned int origin)
+{
+	SYSCALL_REQ(lseek, fd, offset, origin);
+}
+
+long lkl_sys_rename(const char *oldname, const char *newname)
+{
+	SYSCALL_REQ(rename, (long)oldname, (long)newname);
+}
+
+long lkl_sys_flock(unsigned int fd, unsigned int cmd)
+{
+	SYSCALL_REQ(flock, fd, cmd);
+}
+
+long lkl_sys_newfstat(unsigned int fd, struct stat *statbuf)
+{
+	SYSCALL_REQ(newfstat, fd, (long)statbuf);
+}
+
+long lkl_sys_chmod(const char *filename, mode_t mode)
+{
+	SYSCALL_REQ(chmod, (long)filename, mode);
+}
+
+long lkl_sys_newlstat(char *filename, struct stat *statbuf)
+{
+	SYSCALL_REQ(newlstat, (long)filename, (long)statbuf);
+}
+
+long lkl_sys_mkdir(const char *pathname, int mode)
+{
+	SYSCALL_REQ(mkdir, (long)pathname, mode);
+}
+
+long lkl_sys_rmdir(const char *pathname)
+{
+	SYSCALL_REQ(rmdir, (long)pathname);
+}
+
+long lkl_sys_getdents(unsigned int fd, struct linux_dirent *dirent, unsigned int count)
+{
+	SYSCALL_REQ(getdents, fd, (long)dirent, count);
+}
+
+long lkl_sys_newstat(char *filename, struct stat *statbuf)
+{
+	SYSCALL_REQ(newstat, (long)filename, (long)statbuf);
+}
+
+long lkl_sys_utimes(const char *filename, struct timeval *utimes)
+{
+	SYSCALL_REQ(utime, (long)filename, (long)utimes);
+}
+
+long lkl_sys_mount(const char *dev, const char *mnt_point, const char *fs, int flags, void *data)
+{
+	SYSCALL_REQ(mount, (long)dev, (long)mnt_point, (long)fs, flags, (long)data);
+}
+
+
+long lkl_sys_chdir(const char *dir)
+{
+	SYSCALL_REQ(chdir, (long)dir);
+}
+
+
+long lkl_sys_mknod(const char *filename, int mode, unsigned dev)
+{
+	SYSCALL_REQ(mknod, (long)filename, mode, dev);
+}
+
+
+long lkl_sys_chroot(const char *dir)
+{
+	SYSCALL_REQ(chroot, (long)dir);
+}
+
+long lkl_sys_nanosleep(struct timespec *rqtp, struct timespec *rmtp)
+{
+	SYSCALL_REQ(nanosleep, (long)rqtp, (long)rmtp);
+}
+
+
+/* 
+ * Halt is special as we want to call syscall_done after the kernel has been
+ * halted, in linux_start_kernel. 
+ */
+void *halt_data;
+
+long lkl_sys_halt(void)
+{
+	struct syscall_req sr = {	
+		.syscall = __NR_reboot,
+	};
+	halt_data=sr.data=linux_nops->syscall_prepare();
+	linux_trigger_irq_with_data(SYSCALL_IRQ, &sr);
+	linux_nops->syscall_wait(sr.data);
+	return sr.ret;
+}     
+
 
 late_initcall(syscall_init);

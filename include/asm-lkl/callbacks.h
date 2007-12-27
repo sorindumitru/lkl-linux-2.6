@@ -93,10 +93,29 @@ struct linux_native_operations {
 	 * the chance for the app to clean-up any resources allocated so far. Do
 	 * not forget to:
 	 *
-	 * - free the  memory allocated via mem_init
+	 * - free the memory allocated via mem_init
 	 * 
 	 */
 	void (*halt)(void);
+
+	/*
+	 * We are about to issue a system call. The return value will be passed
+	 * in subsequent syscall_wait and syscall_done calls.
+	 */
+	void* (*syscall_prepare)(void);
+
+	/*
+	 * The system call has been issued. The user needs to wait here until
+	 * Linux goes through with the system call and syscall_done is called.
+	 */
+	void (*syscall_wait)(void *arg);
+
+	/*
+	 * System call was complete. You can now exit syscall_wait.
+	 */
+	void (*syscall_done)(void *arg);
+
+    
 };
 
 extern struct linux_native_operations *linux_nops;
@@ -122,41 +141,5 @@ int linux_trigger_irq_with_data(int irq, void *data);
  */
 int linux_start_kernel(struct linux_native_operations *lnops, const char *cmd_line, ...);
 
-
-/* 
- * WARNING: should match _syscall_req in entry.c 
- */
-struct linux_syscall_request {
-	/* 
-	 * System call number 
-	 */
-	int syscall;
-
-	/* 
-	 * Syscall parameters 
-	 */
-	long params[6];
-
-	/* 
-	 * Holds system call return value upon system call completion 
-	 */
-	long ret;
-
-	/*
-	 * Will be passed to done 
-	 */
-	void *data;
-
-	/* 
-	 * Will be called after the  system call has returned and ret field has been
-	 * populated
-	 */
-	void (*done)(void*);
-
-	/* 
-	 * HACK: should match list_head 
-	 */
-	struct { void *next, *prev; } lh;
-};
 
 #endif
