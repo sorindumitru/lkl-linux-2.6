@@ -330,6 +330,15 @@ long lkl_sys_nanosleep(struct timespec *rqtp, struct timespec *rmtp)
 	SYSCALL_REQ(nanosleep, (long)rqtp, (long)rmtp);
 }
 
+long lkl_sys_getcwd(char *buf, unsigned long size)
+{
+	SYSCALL_REQ(getcwd, (long)buf, (long) size);
+}
+
+long lkl_sys_utime(const char *filename, const struct utimbuf *buf)
+{
+        SYSCALL_REQ(utime, (long)filename, (long)buf);
+}
 
 /* 
  * Halt is special as we want to call syscall_done after the kernel has been

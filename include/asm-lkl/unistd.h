@@ -56,6 +56,8 @@ long lkl_sys_chroot(const char __user *filename);
 long lkl_sys_mount(char __user *dev_name, char __user *dir_name,
 		    char __user *type, unsigned long flags, void __user *data);
 long lkl_sys_halt(void);
+long lkl_sys_getcwd(char *buf, unsigned long size);
+long lkl_sys_utime(const char *filename, const struct utimbuf *buf);
 
 int sprintf(char * buf, const char * fmt,
 	    ...) __attribute__ ((format (printf, 2, 3)));
