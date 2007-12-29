@@ -8,6 +8,7 @@
 #include <linux/slab.h>
 #include <linux/types.h>
 #include <linux/syscalls.h>
+#include <linux/net.h>
 
 /*
  * sys_mount (is sloppy?? and) copies a full page from dev_name, type and
@@ -94,6 +95,10 @@ void init_syscall_table(void)
 	INIT_STE(statfs);
 	INIT_STE(chroot);
 	INIT_STE(getcwd);
+#ifdef CONFIG_NET
+	INIT_STE(socketcall);
+#endif
+	INIT_STE(ioctl);
 }
 
 struct syscall_req {
@@ -339,6 +344,30 @@ long lkl_sys_utime(const char *filename, const struct utimbuf *buf)
 {
         SYSCALL_REQ(utime, (long)filename, (long)buf);
 }
+
+long lkl_sys_socket(int family, int type, int protocol)
+{
+	long args[6]={family, type, protocol};
+	SYSCALL_REQ(socketcall, SYS_SOCKET, (long)args);
+}
+
+long lkl_sys_send(int sock, void *buffer, size_t size, unsigned flags)
+{
+	long args[6]={sock, (long)buffer, size, flags};
+	SYSCALL_REQ(socketcall, SYS_SEND, (long)args);
+}
+
+long lkl_sys_recv(int sock, void *buffer, size_t size, unsigned flags)
+{
+	long args[6]={sock, (long)buffer, size, flags};
+	SYSCALL_REQ(socketcall, SYS_RECV, (long)args);
+}
+
+long lkl_sys_ioctl(unsigned int fd, unsigned int cmd, unsigned long arg)
+{
+	SYSCALL_REQ(ioctl, fd, cmd, arg);
+}
+
 
 /* 
  * Halt is special as we want to call syscall_done after the kernel has been

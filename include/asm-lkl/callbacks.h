@@ -5,10 +5,14 @@
 
 struct linux_native_operations {
 	/*
+	 * All printks go out through this callback.
+	 */
+	void (*print)(const char *str, int len);
+
+	/*
 	 * Called during a kernel panic. 	 
 	 */
 	long (*panic_blink)(long time);
-
 
 	/*
 	 * Allocate and initialize the application thread info and return a

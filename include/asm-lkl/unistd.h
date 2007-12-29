@@ -59,6 +59,10 @@ long lkl_sys_mount(char __user *dev_name, char __user *dir_name,
 long lkl_sys_halt(void);
 long lkl_sys_getcwd(char *buf, unsigned long size);
 long lkl_sys_utime(const char *filename, const struct utimbuf *buf);
+long lkl_sys_socket(int family, int type, int protocol);
+long lkl_sys_send(int sock, void *buffer, size_t size, unsigned flags);
+long lkl_sys_recv(int sock, void *buffer, size_t size, unsigned flags);
+long lkl_sys_ioctl(unsigned int fd, unsigned int cmd, unsigned long arg);
 
 int sprintf(char * buf, const char * fmt,
 	    ...) __attribute__ ((format (printf, 2, 3)));

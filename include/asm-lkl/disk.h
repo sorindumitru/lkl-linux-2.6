@@ -1,0 +1,16 @@
+#ifndef _LKL_DISK_H
+#define _LKL_DISK_H
+
+#define LKL_DISK_CS_ERROR 0
+#define LKL_DISK_CS_SUCCESS 1
+
+struct lkl_disk_cs {
+	void *linux_cookie;
+	int status, sync;
+};
+void lkl_disk_do_rw(void *f, unsigned long sector, unsigned long nsect,
+		    char *buffer, int dir, struct lkl_disk_cs *cs);
+
+int lkl_disk_add_disk(void *data, const char *name, int which, int sectors);
+
+#endif
