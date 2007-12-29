@@ -1845,7 +1845,7 @@ panic:
 	panic("netlink_init: Cannot allocate nl_table\n");
 }
 
-core_initcall(netlink_proto_init);
+core_initcall_sync(netlink_proto_init);
 
 EXPORT_SYMBOL(netlink_ack);
 EXPORT_SYMBOL(netlink_run_queue);

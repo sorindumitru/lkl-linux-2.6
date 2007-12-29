@@ -5,7 +5,7 @@
 #
 #############################################################################
 
-mainmenu "Lib Linux Kernel Configuration"
+mainmenu "Linux Kernel Configuration"
 
 config ISA
 	bool
@@ -106,6 +106,31 @@ config TICK_ONESHOT
 config LKL
 	bool
 	default y
+
+choice 
+       prompt "LKL environment"
+       default LKL_ENV_NONE
+config LKL_ENV_NONE
+       bool "no pre-build environment"
+config LKL_ENV_POSIX
+       bool "POSIX"
+config LKL_ENV_NT
+       bool "Windows NT"
+config LKL_ENV_NTK
+       bool "Window NT kernel"
+config LKL_ENV_APR
+       bool "Apache Portable Runtime"
+config LKL_ENV_LINUX
+       bool "Linux"
+endchoice
+
+config LKL_DRV_DISK
+       bool "Disk driver"
+
+config LKL_DRV_ETH
+       bool "Ethernet driver"
+       depends on LKL_ENV_LINUX
+       depends on NET
 
 source init/Kconfig
 

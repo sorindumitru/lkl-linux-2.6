@@ -77,7 +77,7 @@ static inline void cpu_relax(void)
 }
 
 //REVIEW: any way to do this portable?
-#define current_text_addr() (0)
+#define current_text_addr() (NULL)
 
 static inline unsigned long get_wchan(struct task_struct *task)
 {

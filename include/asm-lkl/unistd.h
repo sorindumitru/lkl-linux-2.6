@@ -2,9 +2,6 @@
 #define _ASM_LKL_UNISTD_H
 
 
-/*
- * FIXME: get rid of all this kludge and keep only the linux_syscall interface.
- */
 #define cond_syscall(x) 
 
 #include <asm-i386/unistd.h>
@@ -23,6 +20,7 @@
 #include <linux/time.h>
 #include <asm-generic/statfs.h>
 #include <linux/stat.h>
+#include <linux/utime.h>
 
 struct linux_dirent {
 	unsigned long	d_ino;
@@ -31,44 +29,47 @@ struct linux_dirent {
 	char		d_name[1];
 };
 
-asmlinkage long sys_sync(void);
-asmlinkage long sys_reboot(int magic1, int magic2, unsigned int cmd,  void __user *arg);
-asmlinkage ssize_t sys_write(unsigned int fd, const char __user *buf,    size_t count);
-asmlinkage long sys_close(unsigned int fd);
-asmlinkage long sys_unlink(const char __user *pathname);
-asmlinkage long sys_open(const char __user *filename, int flags, int mode);
-asmlinkage long sys_poll(struct pollfd __user *ufds, unsigned int nfds, long timeout);
-asmlinkage ssize_t sys_read(unsigned int fd, char __user *buf,  size_t count);
-asmlinkage off_t sys_lseek(unsigned int fd, off_t offset,  unsigned int origin);
-asmlinkage long sys_rename(const char __user *oldname,  const char __user *newname);
-asmlinkage long sys_flock(unsigned int fd, unsigned int cmd);
-asmlinkage long sys_newfstat(unsigned int fd, struct stat __user *statbuf);
-asmlinkage long sys_chmod(const char __user *filename, mode_t mode);
-asmlinkage long sys_newlstat(char __user *filename, struct stat __user *statbuf);
-asmlinkage long sys_mkdir(const char __user *pathname, int mode);
-asmlinkage long sys_rmdir(const char __user *pathname);
-asmlinkage long sys_getdents(unsigned int fd, struct linux_dirent __user *dirent, unsigned int count);
-asmlinkage long sys_newstat(char __user *filename, struct stat __user *statbuf);
-asmlinkage long sys_utimes(const char __user *filename, struct timeval __user *utimes);
-asmlinkage long sys_nanosleep(struct timespec __user *rqtp, struct timespec __user *rmtp);
-asmlinkage long sys_mknod(const char __user *filename, int mode,
-				unsigned dev);
-asmlinkage long sys_umount(char __user *name, int flags);
-asmlinkage long sys_chdir(const char __user *filename);
-asmlinkage long sys_statfs(const char __user * path,
-				struct statfs __user *buf);
-asmlinkage long sys_chroot(const char __user *filename);
-asmlinkage long sys_safe_mount(char __user *dev_name, char __user *dir_name,
-				char __user *type, unsigned long flags,
-				void __user *data);
+long lkl_sys_sync(void);
+long lkl_sys_reboot(int magic1, int magic2, unsigned int cmd,  void __user *arg);
+ssize_t lkl_sys_write(unsigned int fd, const char __user *buf,    size_t count);
+long lkl_sys_close(unsigned int fd);
+long lkl_sys_unlink(const char __user *pathname);
+long lkl_sys_open(const char __user *filename, int flags, int mode);
+long lkl_sys_poll(struct pollfd __user *ufds, unsigned int nfds, long timeout);
+ssize_t lkl_sys_read(unsigned int fd, char __user *buf,  size_t count);
+off_t lkl_sys_lseek(unsigned int fd, off_t offset,  unsigned int origin);
+long lkl_sys_rename(const char __user *oldname,  const char __user *newname);
+long lkl_sys_flock(unsigned int fd, unsigned int cmd);
+long lkl_sys_newfstat(unsigned int fd, struct stat __user *statbuf);
+long lkl_sys_chmod(const char __user *filename, mode_t mode);
+long lkl_sys_newlstat(char __user *filename, struct stat __user *statbuf);
+long lkl_sys_mkdir(const char __user *pathname, int mode);
+long lkl_sys_rmdir(const char __user *pathname);
+long lkl_sys_getdents(unsigned int fd, struct linux_dirent __user *dirent, unsigned int count);
+long lkl_sys_newstat(char __user *filename, struct stat __user *statbuf);
+long lkl_sys_utimes(const char __user *filename, struct timeval __user *utimes);
+long lkl_sys_nanosleep(struct timespec __user *rqtp, struct timespec __user *rmtp);
+long lkl_sys_mknod(const char __user *filename, int mode, unsigned dev);
+long lkl_sys_umount(char __user *name, int flags);
+long lkl_sys_chdir(const char __user *filename);
+long lkl_sys_statfs(const char __user * path, struct statfs __user *buf);
+long lkl_sys_chroot(const char __user *filename);
+long lkl_sys_mount(char __user *dev_name, char __user *dir_name,
+		    char __user *type, unsigned long flags, void __user *data);
+long lkl_sys_halt(void);
+long lkl_sys_getcwd(char *buf, unsigned long size);
+long lkl_sys_utime(const char *filename, const struct utimbuf *buf);
+long lkl_sys_socket(int family, int type, int protocol);
+long lkl_sys_send(int sock, void *buffer, size_t size, unsigned flags);
+long lkl_sys_recv(int sock, void *buffer, size_t size, unsigned flags);
+long lkl_sys_ioctl(unsigned int fd, unsigned int cmd, unsigned long arg);
 
-
-extern int sprintf(char * buf, const char * fmt,
-		   ...) __attribute__ ((format (printf, 2, 3)));
-extern int snprintf(char * buf, size_t size, const char * fmt,
-		    ...) __attribute__ ((format (printf, 3, 4)));
-extern int sscanf(const char *, const char *,
-		  ...) __attribute__ ((format (scanf, 2, 3)));
+int sprintf(char * buf, const char * fmt,
+	    ...) __attribute__ ((format (printf, 2, 3)));
+int snprintf(char * buf, size_t size, const char * fmt,
+	     ...) __attribute__ ((format (printf, 3, 4)));
+int sscanf(const char *, const char *,
+	   ...) __attribute__ ((format (scanf, 2, 3)));
 
 #endif 
 

@@ -30,7 +30,8 @@
 
 /* Revised by Kenneth Albanowski for m68knommu. Basic problem: unaligned access kills, so most
    of the assembly has to go. */
-
+#include <linux/types.h>
+#include <asm/byteorder.h>
 #include <net/checksum.h>
 #include <linux/module.h>
 

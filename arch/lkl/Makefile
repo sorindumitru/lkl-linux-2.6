@@ -24,7 +24,10 @@ KALLSYMS += --symbol-prefix=$(shell echo | $(CROSS_COMPILE)cpp -dM | grep USER_L
 
 KBUILD_DEFCONFIG := defconfig
 
-core-y += $(arch_dir)/kernel/
-lib-y  += $(arch_dir)/lib/
-drivers-y += $(LKL_DRIVERS)/
+core-y += $(arch_dir)/kernel/ 
+libs-y  += $(arch_dir)/lib/
+drivers-y += $(arch_dir)/drivers/
+
+all: vmlinux
+	$(Q)$(MAKE) $(build)=$(arch_dir)/envs/ env.a
 
