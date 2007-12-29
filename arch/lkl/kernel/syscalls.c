@@ -94,6 +94,7 @@ void init_syscall_table(void)
 	INIT_STE(statfs);
 	INIT_STE(chroot);
 	INIT_STE(getcwd);
+	INIT_STE(chown);
 }
 
 struct _syscall_req {
