@@ -364,6 +364,13 @@ long lkl_sys_recv(int sock, void *buffer, size_t size, unsigned flags)
 	SYSCALL_REQ(socketcall, SYS_RECV, (long)args);
 }
 
+
+long lkl_sys_connect(int sock, struct sockaddr *saddr, int len)
+{
+	long args[6]={sock, (long)saddr, len};
+	SYSCALL_REQ(socketcall, SYS_CONNECT, (long)args);
+}
+
 long lkl_sys_ioctl(unsigned int fd, unsigned int cmd, unsigned long arg)
 {
 	SYSCALL_REQ(ioctl, fd, cmd, arg);

@@ -21,6 +21,7 @@
 #include <asm-generic/statfs.h>
 #include <linux/stat.h>
 #include <linux/utime.h>
+#include <linux/in.h>
 
 struct linux_dirent {
 	unsigned long	d_ino;
@@ -63,6 +64,7 @@ long lkl_sys_socket(int family, int type, int protocol);
 long lkl_sys_send(int sock, void *buffer, size_t size, unsigned flags);
 long lkl_sys_recv(int sock, void *buffer, size_t size, unsigned flags);
 long lkl_sys_ioctl(unsigned int fd, unsigned int cmd, unsigned long arg);
+long lkl_sys_connect(int sock, struct sockaddr *saddr, int len);
 
 int sprintf(char * buf, const char * fmt,
 	    ...) __attribute__ ((format (printf, 2, 3)));
