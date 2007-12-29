@@ -7,35 +7,60 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <unistd.h>
+#include <malloc.h>
 
-#include "lkl/net.h"
+#include <asm-lkl/eth.h>
+#include <asm-lkl/callbacks.h>
 
 static int sock;
 
-pthread_t rxt;
+static void free_rx_desc(void *_rxd)
+{
+	struct lkl_eth_rx_desc *rxd=(struct lkl_eth_rx_desc*)_rxd;
 
-static void* rx_thread(void *arg)
+	free(rxd->data);
+	free(rxd);
+}
+
+static void* rx_thread(void *netdev)
 {
 	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
-	char data[1600];
+	char data[1518];
 	int len;
-	
+
 	while (1) {
-		len=recv(sock, &data[2], sizeof(data), 0);
+		len=recv(sock, data, sizeof(data), 0);
 		if (len > 0) {
-			*((short*)data)=len;
-			linux_trigger_irq_with_data(LKL_NET_IRQ, data);
+			struct lkl_eth_rx_desc *rxd;
+
+			if (!(rxd=malloc(sizeof(*rxd))))
+				continue;
+
+			if (!(rxd->data=malloc(len))) {
+				free(rxd);
+				continue;
+			}
+
+			memcpy(rxd->data, data, len);
+			rxd->len=len;
+			rxd->netdev=netdev;
+			rxd->free=free_rx_desc;
+
+			linux_trigger_irq_with_data(ETH_IRQ, rxd);
 		}
 	}
 }
 
-int lkl_net_init(void)
+int lkl_eth_rx_init(void *netdev, int ifindex)
 {
 	struct sockaddr_ll saddr = {
 		.sll_family = AF_PACKET,
-		.sll_ifindex = 11,
+		.sll_ifindex = ifindex,
 		.sll_protocol = htons(ETH_P_ALL)
 	};
+	pthread_t rxt;
+
+
 	sock = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
 
         if (sock < 0) {
@@ -49,23 +74,18 @@ int lkl_net_init(void)
                 return -1;
         }
 
-	pthread_create(&rxt, NULL, rx_thread, NULL);
+	pthread_create(&rxt, NULL, rx_thread, netdev);
 
 	return 0;
 }
 
-void lkl_net_fini(void)
-{
-	pthread_cancel(rxt);
-}
 
-
-int lkl_net_xmit(const char *data, int len)
+int lkl_eth_xmit(int ifindex, const char *data, int len)
 {
 	struct sockaddr_ll saddr = {
 		.sll_family = AF_PACKET,
 		.sll_halen = 6,
-		.sll_ifindex = 11,
+		.sll_ifindex = ifindex,
 	};
 	int err;
 

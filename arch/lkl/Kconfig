@@ -120,6 +120,8 @@ config LKL_ENV_NTK
        bool "Window NT kernel"
 config LKL_ENV_APR
        bool "Apache Portable Runtime"
+config LKL_ENV_LINUX
+       bool "Linux"
 endchoice
 
 config LKL_DRV_DISK

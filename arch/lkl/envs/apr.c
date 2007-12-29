@@ -184,7 +184,10 @@ static struct linux_native_operations nops = {
 	.enter_idle = enter_idle,
 	.exit_idle = exit_idle,
 	.time = time,
-	.timer = timer
+	.timer = timer,
+	.syscall_prepare = syscall_prepare,
+	.syscall_done = syscall_done,
+	.syscall_wait = syscall_wait
 };
 
 static int (*app_init)(void);
