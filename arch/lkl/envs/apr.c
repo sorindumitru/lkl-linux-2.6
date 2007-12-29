@@ -7,7 +7,7 @@
 #include <apr_file_io.h>
 #include <apr_time.h>
 #include <apr_poll.h>
-
+#include <unistd.h>
 #include <malloc.h>
 #include <assert.h>
 
@@ -114,7 +114,7 @@ static apr_pollset_t *pollset;
 static void timer(unsigned long delta)
 {
 	if (delta)
-		timer_exp=linux_time()+delta;
+		timer_exp=time()+delta;
 	else
 		timer_exp=0;
 }
@@ -129,7 +129,7 @@ static void exit_idle(void)
 
 static void enter_idle(int halted)
 {
-	signed long long delta=timer_exp-linux_time();
+	signed long long delta=timer_exp-time();
 	apr_int32_t num=0;
 	const apr_pollfd_t *descriptors;
 
@@ -147,7 +147,7 @@ static void enter_idle(int halted)
 		apr_file_read(events_pipe_in, &c, &n);
 	}
 
-	if (timer_exp <= linux_time()) {
+	if (timer_exp <= time()) {
 		timer_exp=0;
 		linux_trigger_irq(TIMER_IRQ);
 	}
@@ -172,6 +172,30 @@ static void halt(void)
 	free(_phys_mem);
 }
 
+static apr_thread_mutex_t *syscall_mutex;
+static apr_thread_mutex_t *wait_syscall_mutex;
+
+void syscall_done(void *arg)
+{
+	apr_thread_mutex_unlock(wait_syscall_mutex);
+}
+
+void* syscall_prepare(void)
+{
+	apr_thread_mutex_lock(syscall_mutex);
+	return NULL;
+}
+
+void syscall_wait(void *arg)
+{
+	apr_thread_mutex_lock(wait_syscall_mutex);
+	apr_thread_mutex_unlock(syscall_mutex);
+}
+
+void print(const char *data, int len)
+{
+	write(1, data, len);
+}
 
 static struct linux_native_operations nops = {
 	.panic_blink = panic_blink,
@@ -187,7 +211,8 @@ static struct linux_native_operations nops = {
 	.timer = timer,
 	.syscall_prepare = syscall_prepare,
 	.syscall_done = syscall_done,
-	.syscall_wait = syscall_wait
+	.syscall_wait = syscall_wait,
+	.print = print
 };
 
 static int (*app_init)(void);
@@ -209,9 +234,9 @@ static void* APR_THREAD_FUNC init_thread(apr_thread_t *thr, void *arg)
 
 static apr_thread_t *init_thread_handle;
 
-void lkl_env_init(void)
+void lkl_env_init(int (*_init)(void))
 {
-	app_init=nops.init;
+	app_init=_init;
 	nops.init=init;
 
 	apr_pool_create(&pool, NULL);
@@ -235,40 +260,9 @@ void lkl_env_init(void)
         apr_thread_mutex_lock(init_mutex);
 	apr_thread_create(&init_thread_handle, NULL, init_thread, NULL, pool);
         apr_thread_mutex_lock(init_mutex);
-}
 
-static apr_thread_mutex_t *syscall_mutex;
-static apr_pool_t *syscall_pool;
-static apr_thread_mutex_t *wait_syscall_mutex;
-
-void syscall_helpers_init(void)
-{
-	apr_pool_create(&syscall_pool, NULL);
-	apr_thread_mutex_create(&syscall_mutex, APR_THREAD_MUTEX_UNNESTED, syscall_pool);
-	apr_thread_mutex_create(&wait_syscall_mutex, APR_THREAD_MUTEX_UNNESTED, syscall_pool);
+	apr_thread_mutex_create(&syscall_mutex, APR_THREAD_MUTEX_UNNESTED, pool);
+	apr_thread_mutex_create(&wait_syscall_mutex, APR_THREAD_MUTEX_UNNESTED, pool);
 	apr_thread_mutex_lock(wait_syscall_mutex);
-}
-
-void syscall_helpers_fini(void)
-{
-	apr_thread_mutex_destroy(syscall_mutex);
-	apr_pool_destroy(syscall_pool);
-}
-
-
-void syscall_done(void *arg)
-{
-	apr_thread_mutex_unlock(wait_syscall_mutex);
-}
-
-void syscall_enter(void)
-{
-	apr_thread_mutex_lock(syscall_mutex);
-}
-
-void syscall_exit(void)
-{
-	apr_thread_mutex_lock(wait_syscall_mutex);
-	apr_thread_mutex_unlock(syscall_mutex);
 }
 

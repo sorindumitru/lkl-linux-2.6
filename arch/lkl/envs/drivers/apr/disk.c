@@ -26,7 +26,6 @@ void lkl_disk_do_rw(void *_file, unsigned long sector, unsigned long nsect,
 	else
 		cs->status=LKL_DISK_CS_ERROR;
 	
-	return 0;
 }
 
 

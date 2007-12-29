@@ -28,6 +28,6 @@ core-y += $(arch_dir)/kernel/
 libs-y  += $(arch_dir)/lib/
 drivers-y += $(arch_dir)/drivers/
 
-all: vmlinux
+env.a: 
 	$(Q)$(MAKE) $(build)=$(arch_dir)/envs/ env.a
 

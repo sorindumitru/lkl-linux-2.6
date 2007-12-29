@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <assert.h>
+#include <unistd.h>
 
 #include <asm-lkl/callbacks.h>
 
@@ -176,6 +177,22 @@ static void syscall_done(void *arg)
         ReleaseSemaphore(syscall_sem_wait, 1, NULL);
 }
 
+static void print(const char *str, int len)
+{
+	write(1, str, len);
+}
+
+static HANDLE init_sem;
+
+static int (*app_init)(void);
+
+static int init(void)
+{
+	int ret=app_init();
+	ReleaseSemaphore(init_sem, 1, NULL);
+	return ret;
+}
+
 static struct linux_native_operations nops = {
 	.panic_blink = panic_blink,
 	.mem_init = mem_init,
@@ -190,7 +207,9 @@ static struct linux_native_operations nops = {
 	.timer = set_timer,
 	.syscall_prepare = syscall_prepare,
 	.syscall_done = syscall_done,
-	.syscall_wait = syscall_wait
+	.syscall_wait = syscall_wait,
+	.print = print,
+	.init = init
 };
 
 
@@ -200,22 +219,11 @@ static DWORD WINAPI init_thread(LPVOID arg)
 	return 0;
 }
 
-static HANDLE init_sem;
-
-static int (*app_init)(void);
-
-static int init(void)
-{
-	int ret=app_init();
-	ReleaseSemaphore(init_sem, 1, NULL);
-	return ret;
-}
-
 HANDLE init_thread_handle;
 
-void lkl_env_init(void)
+void lkl_env_init(int (*_init)(void))
 {
-	app_init=nops.init;
+	app_init=_init;
 	nops.init=init;
 
         helper_sem=CreateSemaphore(NULL, 0, 100, NULL);
@@ -224,7 +232,7 @@ void lkl_env_init(void)
         syscall_sem_wait=CreateSemaphore(NULL, 0, 100, NULL);
         syscall_sem=CreateSemaphore(NULL, 1, 100, NULL);
 	init_sem=CreateSemaphore(NULL, 0, 100, NULL);
-        init_thread_handle=CreateThread(NULL, 0, init_thread, lnops, 0, NULL);
+        init_thread_handle=CreateThread(NULL, 0, init_thread, NULL, 0, NULL);
         WaitForSingleObject(init_sem, INFINITE);
 }
 

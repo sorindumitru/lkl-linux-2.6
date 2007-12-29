@@ -1,9 +1,8 @@
-CFLAGS=-Wall $(LINUXINCLUDE)
-apr_CFLAGS=-I/usr/include/apr-1.0 -D_LARGEFILE64_SOURCE 
+CFLAGS=-Wall $(LINUXINCLUDE) $(EXTRA_CFLAGS)
 
 $(obj)/%.o: $(srctree)/$(src)/%.c
 	mkdir -p `dirname $@`
-	$(CROSS_COMPILE)gcc $(CFLAGS) -c -o $@ $^ $($(patsubst %.c,%,$^)_CFLAGS)
+	$(CROSS_COMPILE)gcc $(CFLAGS) -c -o $@ $^ 
 
 _ENV=$(if $(CONFIG_LKL_ENV_POSIX),posix)
 _ENV+=$(if $(CONFIG_LKL_ENV_NT),nt)
@@ -20,4 +19,4 @@ DRV_OBJS=$(patsubst %,$(obj)/drivers/$(ENV)/%.o,$(DRV))
 env.a: $(patsubst %,$(obj)/%.o,$(ENV)) $(DRV_OBJS)
 	$(CROSS_COMPILE)ar -rc $@ $^
 	$(CROSS_COMPILE)ranlib $@
-	echo $(DRV_OBJS) x$(ENV)x
+

@@ -13,9 +13,12 @@ struct lkl_eth_data {
 static int start_xmit(struct sk_buff *skb, struct net_device *netdev)
 {
 	struct lkl_eth_data *led=(struct lkl_eth_data*)netdev_priv(netdev);
+	int err=lkl_eth_xmit(led->native_ifindex, skb->data, skb->len);
 
-	printk("tx: %d\n", skb->len);
-	return lkl_eth_xmit(led->native_ifindex, skb->data, skb->len);
+	if (err == 0)
+		dev_kfree_skb(skb);
+
+	return err;
 }
 
 static irqreturn_t lkl_net_irq(int irq, void *dev_id)
@@ -23,24 +26,17 @@ static irqreturn_t lkl_net_irq(int irq, void *dev_id)
 	struct pt_regs *regs=get_irq_regs();
 	struct lkl_eth_rx_desc *rxd=regs->irq_data;
 	struct sk_buff *skb=dev_alloc_skb(rxd->len);
+	int err;
 
 	memcpy(skb_put(skb, rxd->len), rxd->data, rxd->len);
 	skb->dev=rxd->netdev;
 	skb->protocol=eth_type_trans(skb, rxd->netdev);
 
-	printk("rx: len=%d data=%p\n", rxd->len, rxd->data);
+	err=netif_rx(skb);
 
 	rxd->free(rxd);
-
-	netif_rx(skb);
 	
 	return IRQ_HANDLED;
-}
-
-int nopen(struct net_device *netdev)
-{
-	printk("%s\n", __FUNCTION__);
-	return 0;
 }
 
 static int failed_init;
@@ -65,7 +61,6 @@ int lkl_add_eth(char *mac, int native_ifindex)
 	memcpy(netdev->dev_addr, mac, 6);
 
 	netdev->hard_start_xmit=start_xmit;
-	netdev->open=nopen;
 
 	if ((err=register_netdev(netdev))) {
 		kfree(netdev);
