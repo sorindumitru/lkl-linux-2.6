@@ -95,6 +95,7 @@ void init_syscall_table(void)
 	INIT_STE(statfs);
 	INIT_STE(chroot);
 	INIT_STE(getcwd);
+	INIT_STE(chown);
 #ifdef CONFIG_NET
 	INIT_STE(socketcall);
 #endif
