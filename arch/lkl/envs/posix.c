@@ -94,41 +94,44 @@ static pthread_sem_t idle_sem = {
 	.cond = PTHREAD_COND_INITIALIZER
 };
 
+/*
+ * Signals are trouble.
+ */
+sigset_t sigmask;
+
+static void sig_block(void)
+{
+	pthread_sigmask(SIG_BLOCK, &sigmask, NULL);
+}
+
+static void sig_unblock(void)
+{
+	pthread_sigmask(SIG_UNBLOCK, &sigmask, NULL);
+}
+
 static void exit_idle(void)
 {
+	sig_block();
 	pthread_mutex_lock(&idle_sem.lock);
 	idle_sem.count++;
 	if (idle_sem.count > 0)
 		pthread_cond_signal(&idle_sem.cond);
 	pthread_mutex_unlock(&idle_sem.lock);
+	sig_unblock();
 }
 
 static void enter_idle(int halted)
 {
-	sigset_t sigmask;
-
 	if (halted)
 		return;
 
-	/*
-	 * Avoid deadlocks by blocking signals for idle thread. A few notes:
-	 *
-	 * - POSIX says it will send the signal to one of the threads which has
-	 * signal unblocked
-	 * - we have at least 2 running threads: idle and init
-	 * - only init can call this function, thus only init can block the signal
-	 *
-	 */
-	sigemptyset(&sigmask);
-	sigaddset(&sigmask, SIGALRM);
-
-	pthread_sigmask(SIG_BLOCK, &sigmask, NULL);
+	sig_block();
 	pthread_mutex_lock(&idle_sem.lock);
 	while (idle_sem.count <= 0)
 		pthread_cond_wait(&idle_sem.cond, &idle_sem.lock);
 	idle_sem.count--;
 	pthread_mutex_unlock(&idle_sem.lock);
-	pthread_sigmask(SIG_UNBLOCK, &sigmask, NULL);
+	sig_unblock();
 }
 
 static unsigned long long time_ns(void)
@@ -248,6 +251,8 @@ void lkl_env_init(int (*_init)())
 {
 	app_init=_init;
 
+	sigemptyset(&sigmask);
+	sigaddset(&sigmask, SIGALRM);
         pthread_mutex_lock(&helper_mutex);
         signal(SIGALRM, sigalrm);
 	pthread_mutex_lock(&syscall_mutex_wait);
