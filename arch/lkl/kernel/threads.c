@@ -11,15 +11,51 @@ struct __thread_info {
 	int dead;
 };
 
-/* 
- * FIXME: destroy sem at shutdown.
- */
-void setup_init_thread_info()
+static int threads_counter;
+static void *threads_counter_lock;
+
+static inline void threads_counter_inc(void)
+{
+	linux_nops->sem_down(threads_counter_lock);
+	threads_counter++;
+	linux_nops->sem_up(threads_counter_lock);
+}
+	
+static inline void threads_counter_dec(void)
+{
+	linux_nops->sem_down(threads_counter_lock);
+	threads_counter--;
+	linux_nops->sem_up(threads_counter_lock);
+}
+
+static inline int threads_counter_get(void)
+{
+	int counter;
+	linux_nops->sem_down(threads_counter_lock);
+	counter=threads_counter;
+	linux_nops->sem_up(threads_counter_lock);
+
+	return counter;
+}
+
+
+void threads_init(void)
 {
 	struct __thread_info *ti=(struct __thread_info*)&init_thread_union.thread_info;
 
 	ti->dead=0;
 	BUG_ON((ti->sched_sem=linux_nops->sem_alloc(0)) == NULL);
+	BUG_ON((threads_counter_lock=linux_nops->sem_alloc(1)) == NULL);
+}
+
+void threads_cleanup(void)
+{
+	struct __thread_info *ti=(struct __thread_info*)&init_thread_union.thread_info;
+
+	while (threads_counter_get())
+		schedule_timeout(1);
+
+	linux_nops->sem_free(ti->sched_sem);
 }
 
 struct thread_info* alloc_thread_info(struct task_struct *task)
@@ -62,6 +98,7 @@ void _switch_to(struct task_struct **prev, struct task_struct *next, struct task
 		void *thread=_prev->thread;
 		linux_nops->sem_free(_prev->sched_sem);
 		kfree(_prev);
+		threads_counter_dec();
 		linux_nops->thread_exit(thread);
 	}
 
@@ -108,6 +145,8 @@ int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,
 		kfree(tba);
 		return -EPERM;
 	}
+
+	threads_counter_inc();
 
 	return 0;
 }

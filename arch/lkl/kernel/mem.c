@@ -7,9 +7,10 @@
 #include <linux/mm.h>
 #include <linux/swap.h>
 
-unsigned long phys_mem,  phys_mem_size;
+unsigned long phys_mem, phys_mem_size, memory_end;
 unsigned long empty_zero_page;
 
+static unsigned long _phys_mem;
 
 void show_mem(void)
 {
@@ -33,8 +34,10 @@ void __init mem_init_0(void)
 	init_mm.brk = (unsigned long) 0;
 #endif
 
-        phys_mem_size=linux_nops->mem_init(&phys_mem);
+	phys_mem_size=linux_nops->phys_mem_size;
+        _phys_mem=phys_mem=(unsigned long)linux_nops->mem_alloc(phys_mem_size);
         BUG_ON(!phys_mem);
+	memory_end=phys_mem+phys_mem_size;
 
         if (PAGE_ALIGN(phys_mem) != phys_mem) {
 		phys_mem_size-=PAGE_ALIGN(phys_mem)-phys_mem;
@@ -97,4 +100,9 @@ void __init mem_init(void)
 	       datak
 	       );
 
+}
+
+void mem_cleanup(void)
+{
+	linux_nops->mem_free((void*)_phys_mem);
 }

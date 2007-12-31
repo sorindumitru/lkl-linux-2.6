@@ -35,11 +35,11 @@ struct linux_native_operations {
 	void (*thread_exit)(void *thread);
 
 	/*
-	 * Allocate the memory area to be used by the linux kernel. Store the
-	 * start address in start and return the size. Internally, the start
-	 * and size will be rounded to conform with page boundaries. 
+	 * Memory operations.
 	 */
-	unsigned long (*mem_init)(unsigned long *start);
+	void* (*mem_alloc)(unsigned int);
+	void (*mem_free)(void *);
+	unsigned int phys_mem_size;
 
 	/*
 	 * This routine is called after the kernel initialization is

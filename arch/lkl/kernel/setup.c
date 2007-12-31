@@ -77,6 +77,7 @@ void flush_thread(void)
 struct seq_operations cpuinfo_op;
 
 extern void mem_init_0(void);
+extern void mem_cleanup(void);
 
 static char cmd_line[128];
 
@@ -84,7 +85,7 @@ void __init setup_arch(char **cl)
 {
         *cl=cmd_line;
         panic_blink=linux_nops->panic_blink;
-	setup_init_thread_info();
+	threads_init();
 
         mem_init_0();
 }
@@ -145,15 +146,20 @@ int linux_start_kernel(struct linux_native_operations *nops, const char *fmt, ..
 
 	kill_all_threads();
 
+	threads_cleanup();
+
 	/*
 	 * Stop the timer.
 	 */
 	linux_nops->timer(0);
 
 	/*
-	 * We are almost dead announce application.
+	 * We are almost dead, announce application.
 	 */
-	linux_nops->halt();
+	if (linux_nops->halt)
+		linux_nops->halt();
+
+	mem_cleanup();
 
 	/* 
 	 * Finish the system call. 

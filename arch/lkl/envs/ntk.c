@@ -79,22 +79,13 @@ static void DDKAPI timer_thread(LPVOID arg)
 static long panic_blink(long time)
 {
     DbgPrint("***Kernel panic!***");
-	assert(0);
-	return 0;
+    assert(0);
+    return 0;
 }
 
-static void *phys_mem;
-static unsigned long phys_mem_size;
-
-static unsigned long mem_init(unsigned long *phys_mem)
+static void* mem_alloc(unsigned long size)
 {
-	*phys_mem=(unsigned long)ExAllocatePool(NonPagedPool, phys_mem_size);
-	return phys_mem_size;
-}
-
-static void halt(void)
-{
-	ExFreePool(phys_mem);
+	return ExAllocatePool(NonPagedPool, size);
 }
 
 static void print(const char *str, int len)
@@ -116,7 +107,6 @@ static int init(void)
 static struct linux_native_operations nops = {
 	.panic_blink = panic_blink,
 	.mem_init = mem_init,
-	.halt = halt,
 	.thread_create = thread_create,
 	.thread_exit = thread_exit,
 	.sem_alloc = sem_alloc,
@@ -127,6 +117,8 @@ static struct linux_native_operations nops = {
 	.timer = set_timer,
 	.init = init,
 	.print = print,
+	.mem_free = ExFreePool
+	.mem_alloc = mem_alloc,
 };
 
 
@@ -140,7 +132,7 @@ static DWORD WINAPI init_thread(LPVOID arg)
 int lkl_env_init(int (*_init)(void), unsigned long mem_size)
 {
 	app_init=_init;
-	phys_mem_size=mem_size;
+	nops.phys_mem_size=mem_size;
 
 	KeInitializeTimer(&timer);
         KeInitializeSemaphore(&init_sem, 0, 100);	

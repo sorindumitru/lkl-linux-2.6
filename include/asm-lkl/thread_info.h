@@ -40,7 +40,8 @@ struct thread_struct {
 	},					\
 }
 
-void setup_init_thread_info(void);
+void threads_init(void);
+void threads_cleanup(void);
 
 #define init_thread_info	(init_thread_union.thread_info)
 #define init_stack		(init_thread_union.stack)

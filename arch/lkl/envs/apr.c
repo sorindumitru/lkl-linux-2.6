@@ -199,20 +199,6 @@ static long panic_blink(long time)
 	return 0;
 }
 
-static void *phys_mem;
-static unsigned long phys_mem_size;
-
-static unsigned long mem_init(unsigned long *phys_mem)
-{
-	*phys_mem=(unsigned long)malloc(phys_mem_size);
-	return phys_mem_size;
-}
-
-static void halt(void)
-{
-	free(phys_mem);
-}
-
 static int (*app_init)(void);
 static apr_thread_mutex_t *init_mutex;
 
@@ -226,8 +212,6 @@ static int init(void)
 
 static struct linux_native_operations nops = {
 	.panic_blink = panic_blink,
-	.mem_init = mem_init,
-	.halt = halt,
 	.thread_create = thread_create,
 	.thread_exit = thread_exit,
 	.sem_alloc = sem_alloc,
@@ -238,6 +222,8 @@ static struct linux_native_operations nops = {
 	.timer = timer,
 	.init = init,
 	.print = print,
+	.mem_alloc = malloc,
+	.mem_free = free
 };
 
 
@@ -254,7 +240,7 @@ int lkl_env_init(int (*_init)(void), unsigned long mem_size)
 	apr_thread_t *a, *b;
 
 	app_init=_init;
-	phys_mem_size=mem_size;
+	nops.phys_mem_size=mem_size;
 
 	apr_pool_create(&pool, NULL);
 	apr_thread_create(&a, NULL, timer_thread, NULL, pool);
