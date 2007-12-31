@@ -15,49 +15,31 @@ struct linux_native_operations {
 	long (*panic_blink)(long time);
 
 	/*
-	 * Allocate and initialize the application thread info and return a
-	 * pointer to it. This pointer will be passed to subsequent
-	 * new_thread(), context_switch() and free_thread() routines. 
+	 * Semaphore operations.
 	 */
-	void* (*thread_info_alloc)(void);
+	void* (*sem_alloc)(int count);
+	void (*sem_free)(void *sem);
+	void (*sem_up)(void *sem);
+	void (*sem_down)(void *sem);
 
 	/*
-	 * Create a new stopped thread and arrange it to run f(arg) when
-	 * started (via context_switch). The application can use the
-	 * thread_info area to store information about this thread.
+	 * Create a new thread and starts running f passing arg as a
+	 * parameter. Returns NULL or the thread handle.
 	 */
-	int (*new_thread)(int (*f)(void*), void *arg, void *thread_info);
-
+	void* (*thread_create)(void (*f)(void*), void *arg);
 
 	/*
-	 * Perform a context switch: the current thread (described by the prev
-	 * application thread info) should be stopped, and the thread
-	 * described by the next application thread info should be started.
+	 * Terminate the currently running thread. thread is the handle returned
+	 * by thread_create.
 	 */
-	void (*context_switch)(void *prev, void *next);
-
-	/*
-	 * The kernel says that from its point of view the thread is dead. All
-	 * data structures have been freed and the thread has been switched away
-	 * from (with context_switch). The application must clean any resources
-	 * associated with this linux thread (including the native thread).
-	 *
-	 * This notification is given from another thread context then the dead
-	 * one, so either the application has to be able to terminate threads
-	 * asynchronously, either it needs a way to work around that (for
-	 * example by terminating the thread in the context_switch routine,
-	 * since it is guaranteed that the last operation of the dying thread is
-	 * context_switch).
-	 * 
-	 */
-	void (*free_thread)(void *thread_info);
+	void (*thread_exit)(void *thread);
 
 	/*
 	 * Allocate the memory area to be used by the linux kernel. Store the
-	 * start address in start and the size in size. Internally, the start
+	 * start address in start and return the size. Internally, the start
 	 * and size will be rounded to conform with page boundaries. 
 	 */
-	void (*mem_init)(unsigned long *start, unsigned long *size);
+	unsigned long (*mem_init)(unsigned long *start);
 
 	/*
 	 * This routine is called after the kernel initialization is
@@ -65,20 +47,6 @@ struct linux_native_operations {
 	 * should do here any initialization it requires. 
 	 */
 	int (*init)(void);
-
-	/*
-	 * If no exit_idle operations are pending, block until we receive such
-	 * an operation. This is called by the linux kernel when there is no
-	 * work to be done. If halted is set, then the application should not
-	 * block, but return as soon as possible.
-	 */
-	void (*enter_idle)(int halted);
-
-	/*
-	 * Unblock the enter_idle operation. This will resume the linux kernel
-	 * and will usually be called from linux_trigger_irq() routines. 
-	 */
-	void (*exit_idle)(void);
 
         /*
          * Request a timer interrupt in delta nanoseconds, i.e. a
@@ -101,25 +69,6 @@ struct linux_native_operations {
 	 * 
 	 */
 	void (*halt)(void);
-
-	/*
-	 * We are about to issue a system call. The return value will be passed
-	 * in subsequent syscall_wait and syscall_done calls.
-	 */
-	void* (*syscall_prepare)(void);
-
-	/*
-	 * The system call has been issued. The user needs to wait here until
-	 * Linux goes through with the system call and syscall_done is called.
-	 */
-	void (*syscall_wait)(void *arg);
-
-	/*
-	 * System call was complete. You can now exit syscall_wait.
-	 */
-	void (*syscall_done)(void *arg);
-
-    
 };
 
 extern struct linux_native_operations *linux_nops;

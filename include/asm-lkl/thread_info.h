@@ -21,24 +21,6 @@ struct thread_info {
 	struct restart_block    restart_block;
 };
 
-/* 
- * Hide private here, so that it does not get overwritten in dup_task_struct.
- */
-struct __thread_info {
-	struct thread_info ti;
-	void *private;
-};
-
-static inline void* private_thread_info(struct thread_info *ti)
-{
-
-	return ((struct __thread_info*)ti)->private;
-}
-
-static inline void set_private_thread_info(struct thread_info *ti, void *value)
-{
-	((struct __thread_info*)ti)->private=value;
-}
 
 struct thread_struct {
 };
@@ -57,6 +39,8 @@ struct thread_struct {
 		.fn =  do_no_restart_syscall,	\
 	},					\
 }
+
+void setup_init_thread_info(void);
 
 #define init_thread_info	(init_thread_union.thread_info)
 #define init_stack		(init_thread_union.stack)

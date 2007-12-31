@@ -33,7 +33,7 @@ void __init mem_init_0(void)
 	init_mm.brk = (unsigned long) 0;
 #endif
 
-        linux_nops->mem_init(&phys_mem, &phys_mem_size);
+        phys_mem_size=linux_nops->mem_init(&phys_mem);
         BUG_ON(!phys_mem);
 
         if (PAGE_ALIGN(phys_mem) != phys_mem) {
@@ -79,7 +79,7 @@ void __init mem_init(void)
 {
 	unsigned long tmp;
 	int codek = 0, datak = 0, initk = 0;
-	extern char _etext, _stext, _sdata, _ebss, __init_begin, __init_end;
+	extern char _etext, _stext, __start_rodata, __stop_bss, __init_begin, __init_end;
 
 	max_mapnr = num_physpages = (((unsigned long) high_memory) - PAGE_OFFSET) >> PAGE_SHIFT;
 
@@ -87,7 +87,7 @@ void __init mem_init(void)
 	totalram_pages = free_all_bootmem();
 
 	codek = (&_etext - &_stext) >> 10;
-	datak = 0;//(&_ebss - &_sdata) >> 10;
+	datak = (&__stop_bss - &__start_rodata) >> 10;
 	initk = (&__init_begin - &__init_end) >> 10;
 	tmp = nr_free_pages() << PAGE_SHIFT;
 	printk(KERN_INFO "Memory available: %luk/%luk RAM, (%dk kernel code, %dk data)\n",

@@ -5,82 +5,20 @@
 #include <signal.h>
 #include <assert.h>
 #include <unistd.h>
+#include <poll.h>
+#include <stdio.h>
+#include <errno.h>
+#include <string.h>
 
 #include <asm-lkl/callbacks.h>
+#include <asm-lkl/env.h>
 
-struct thread_info {
-        pthread_t th;
-        pthread_mutex_t sched_mutex;
-	int dead;
-};
 
-struct helper_arg {
-        int (*fn)(void*);
-        void *arg;
-        struct thread_info *ti;
-};
-
-static void* thread_info_alloc(void)
+static void print(const char *str, int len)
 {
-        struct thread_info *ti=malloc(sizeof(*ti));
-
-	assert(ti != NULL);
-
-        pthread_mutex_init(&ti->sched_mutex, NULL);
-        pthread_mutex_lock(&ti->sched_mutex);
-	ti->dead=0;
-
-	return ti;
+	write(1, str, len);
 }
 
-static void context_switch(void *prev, void *next)
-{
-        struct thread_info *_prev=(struct thread_info*)prev;
-        struct thread_info *_next=(struct thread_info*)next;
-        
-        pthread_mutex_unlock(&_next->sched_mutex);
-        pthread_mutex_lock(&_prev->sched_mutex);
-	if (_prev->dead) {
-		free(_prev);
-		pthread_exit(NULL);
-	}
-}
-
-static pthread_mutex_t helper_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-static void* helper(void *arg)
-{
-        struct helper_arg *ha=(struct helper_arg*)arg;
-        int (*fn)(void*)=ha->fn;
-        void *farg=ha->arg;
-        struct thread_info *ti=ha->ti;
-
-        pthread_mutex_unlock(&helper_mutex);
-        pthread_mutex_lock(&ti->sched_mutex);
-        return (void*)fn(farg);
-}
-
-static void free_thread(void *arg)
-{
-        struct thread_info *ti=(struct thread_info*)arg;
-
-	ti->dead=1;
-        pthread_mutex_unlock(&ti->sched_mutex);
-}
-
-static int new_thread(int (*fn)(void*), void *arg, void *ti)
-{
-        struct helper_arg ha = {
-                .fn = fn,
-                .arg = arg,
-                .ti = (struct thread_info*)ti
-        };
-        int ret;
-
-        ret=pthread_create(&ha.ti->th, NULL, helper, &ha);
-        pthread_mutex_lock(&helper_mutex);
-        return ret;
-}
 
 typedef struct {
 	pthread_mutex_t lock;
@@ -88,50 +26,68 @@ typedef struct {
 	pthread_cond_t cond;
 } pthread_sem_t;
 
-static pthread_sem_t idle_sem = {
-	.lock = PTHREAD_MUTEX_INITIALIZER,
-	.count = 0,
-	.cond = PTHREAD_COND_INITIALIZER
-};
-
-/*
- * Signals are trouble.
- */
-sigset_t sigmask;
-
-static void sig_block(void)
+static void* sem_alloc(int count)
 {
-	pthread_sigmask(SIG_BLOCK, &sigmask, NULL);
+	pthread_sem_t *sem=malloc(sizeof(*sem));
+
+	if (!sem)
+		return NULL;
+
+	pthread_mutex_init(&sem->lock, NULL);
+	sem->count=count;
+	pthread_cond_init(&sem->cond, NULL);
+
+	return sem;
 }
 
-static void sig_unblock(void)
+static void sem_free(void *sem)
 {
-	pthread_sigmask(SIG_UNBLOCK, &sigmask, NULL);
+	free(sem);
 }
 
-static void exit_idle(void)
+static void sem_up(void *_sem)
 {
-	sig_block();
-	pthread_mutex_lock(&idle_sem.lock);
-	idle_sem.count++;
-	if (idle_sem.count > 0)
-		pthread_cond_signal(&idle_sem.cond);
-	pthread_mutex_unlock(&idle_sem.lock);
-	sig_unblock();
+	pthread_sem_t *sem=(pthread_sem_t*)_sem;
+
+	pthread_mutex_lock(&sem->lock);
+	sem->count++;
+	if (sem->count > 0)
+		pthread_cond_signal(&sem->cond);
+	pthread_mutex_unlock(&sem->lock);
 }
 
-static void enter_idle(int halted)
+static void sem_down(void *_sem)
 {
-	if (halted)
-		return;
+	pthread_sem_t *sem=(pthread_sem_t*)_sem;
+	
+	pthread_mutex_lock(&sem->lock);
+	while (sem->count <= 0)
+		pthread_cond_wait(&sem->cond, &sem->lock);
+	sem->count--;
+	pthread_mutex_unlock(&sem->lock);
+}
 
-	sig_block();
-	pthread_mutex_lock(&idle_sem.lock);
-	while (idle_sem.count <= 0)
-		pthread_cond_wait(&idle_sem.cond, &idle_sem.lock);
-	idle_sem.count--;
-	pthread_mutex_unlock(&idle_sem.lock);
-	sig_unblock();
+static void* thread_create(void (*fn)(void*), void *arg)
+{
+        int ret;
+	pthread_t *thread=malloc(sizeof(*thread));
+
+	if (!thread)
+		return NULL;
+
+        ret=pthread_create(thread, NULL, (void* (*)(void*))fn, arg);
+	if (ret != 0) {
+		free(thread);
+		return NULL;
+	}
+
+        return thread;
+}
+
+static void thread_exit(void *thread)
+{
+	free(thread);
+	pthread_exit(NULL);
 }
 
 static unsigned long long time_ns(void)
@@ -143,24 +99,58 @@ static unsigned long long time_ns(void)
         return tv.tv_sec*1000000000ULL+tv.tv_usec*1000ULL;
 }
 
-static void sigalrm(int sig)
-{
-        linux_trigger_irq(TIMER_IRQ);
-}
+static int timer_pipe[2];
 
 static void timer(unsigned long delta)
 {
-        unsigned long long delta_us=delta/1000;
-        struct timeval tv = {
-                .tv_sec = delta_us/1000000,
-                .tv_usec = delta_us%1000000
-        };
-        struct itimerval itval = {
-                .it_interval = {0, },
-                .it_value = tv
-        };
-        
-        setitimer(ITIMER_REAL, &itval, NULL);
+	write(timer_pipe[1], &delta, sizeof(delta));
+}
+
+/*
+ * FIXME: destroy thread at shutdown.
+ */
+static void* timer_thread(void *arg)
+{
+	long timeout_ms=-1;
+	unsigned long timeout_ns;
+	struct pollfd pf = {
+		.events = POLLIN,
+	};
+	int err;
+
+
+	if (pipe(timer_pipe) < 0) {
+		printf("lkl: unable to create timer pipe\n");
+		return NULL;
+	}
+	pf.fd=timer_pipe[0];
+
+	while (1) {
+		err=poll(&pf, 1, timeout_ms);
+		timeout_ms=-1;
+
+		switch (err) {
+		case 1:
+			read(timer_pipe[0], &timeout_ns, sizeof(unsigned long));
+			timeout_ms=timeout_ns/1000000; 
+			/* 
+			 * while(1){poll(,,0);} is really while(1);. Not to
+			 * mention that we will generate a zillion interrupts
+			 * while doing it.
+			 */
+			if (!timeout_ms)
+				timeout_ms++;
+			break;
+		default:
+			printf("lkl: timer error: %d %s!\n", err, strerror(errno));
+			/* fall through */
+		case 0:
+			linux_trigger_irq(TIMER_IRQ);
+			break;
+		}
+	}
+
+	return NULL;
 }
 
 static long panic_blink(long time)
@@ -169,42 +159,18 @@ static long panic_blink(long time)
 	return 0;
 }
 
-static void *_phys_mem;
+static void *phys_mem;
+static unsigned long phys_mem_size;
 
-static void mem_init(unsigned long *phys_mem, unsigned long *phys_mem_size)
+static unsigned long mem_init(unsigned long *phys_mem)
 {
-	*phys_mem_size=16*1024*1024;
-	*phys_mem=(unsigned long)malloc(*phys_mem_size);
+	*phys_mem=(unsigned long)malloc(phys_mem_size);
+	return phys_mem_size;
 }
 
 static void halt(void)
 {
-	free(_phys_mem);
-}
-
-static pthread_mutex_t syscall_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t syscall_mutex_wait = PTHREAD_MUTEX_INITIALIZER;
-
-static void* syscall_prepare(void)
-{
-	pthread_mutex_lock(&syscall_mutex);
-	return NULL;
-}
-
-static void syscall_wait(void *arg)
-{
-	pthread_mutex_lock(&syscall_mutex_wait);
-	pthread_mutex_unlock(&syscall_mutex);
-}
-
-static void syscall_done(void *arg)
-{
-	pthread_mutex_unlock(&syscall_mutex_wait);
-}
-
-static void print(const char *str, int len)
-{
-	write(1, str, len);
+	free(phys_mem);
 }
 
 static int (*app_init)(void);
@@ -223,19 +189,16 @@ static struct linux_native_operations nops = {
 	.panic_blink = panic_blink,
 	.mem_init = mem_init,
 	.halt = halt,
-	.thread_info_alloc = thread_info_alloc,
-	.new_thread = new_thread,
-	.free_thread = free_thread,
-	.context_switch = context_switch,
-	.enter_idle = enter_idle,
-	.exit_idle = exit_idle,
+	.thread_create = thread_create,
+	.thread_exit = thread_exit,
+	.sem_alloc = sem_alloc,
+	.sem_free = sem_free,
+	.sem_up = sem_up,
+	.sem_down = sem_down,
 	.time = time_ns,
 	.timer = timer,
 	.init = init,
 	.print = print,
-	.syscall_prepare = syscall_prepare,
-	.syscall_wait = syscall_wait,
-	.syscall_done = syscall_done
 };
 
 
@@ -245,19 +208,20 @@ static void* init_thread(void *arg)
 	return NULL;
 }
 
-pthread_t init_thread_handle;
-
-void lkl_env_init(int (*_init)())
+/* FIXME: check for errors */
+int lkl_env_init(int (*_init)(), unsigned long mem_size)
 {
-	app_init=_init;
+	/* don't really need them */
+	pthread_t a, b;
 
-	sigemptyset(&sigmask);
-	sigaddset(&sigmask, SIGALRM);
-        pthread_mutex_lock(&helper_mutex);
-        signal(SIGALRM, sigalrm);
-	pthread_mutex_lock(&syscall_mutex_wait);
+	app_init=_init;
+	phys_mem_size=mem_size;
+
+        pthread_create(&b, NULL, timer_thread, NULL);
 	pthread_mutex_lock(&init_mutex);
-        pthread_create(&init_thread_handle, NULL, init_thread, NULL);
+        pthread_create(&a, NULL, init_thread, NULL);
 	pthread_mutex_lock(&init_mutex);
+
+	return 0;
 }
 

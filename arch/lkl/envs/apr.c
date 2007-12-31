@@ -12,145 +12,185 @@
 #include <assert.h>
 
 #include <asm-lkl/callbacks.h>
+#include <asm-lkl/env.h>
 
 static apr_pool_t *pool;
-
-struct apr_thread_wrapper_t;
-
-struct thread_info {
-        apr_thread_t *thread;
-        apr_thread_mutex_t *sched_mutex;
-	int dead;
-};
-
-struct helper_arg {
-        int (*fn)(void*);
-        void *arg;
-        struct thread_info *ti;
-};
-
-static void* thread_info_alloc(void)
-{
-        struct thread_info *ti=malloc(sizeof(*ti));
-
-        assert(ti != NULL);
-
-        apr_thread_mutex_create(&ti->sched_mutex, APR_THREAD_MUTEX_UNNESTED, pool);
-        apr_thread_mutex_lock(ti->sched_mutex);
-        ti->dead=0;
-
-        return ti;
-}
-
-static void context_switch(void *prev, void *next)
-{
-        struct thread_info *_prev=(struct thread_info*)prev;
-        struct thread_info *_next=(struct thread_info*)next;
-
-        apr_thread_mutex_unlock(_next->sched_mutex);
-        apr_thread_mutex_lock(_prev->sched_mutex);
-	if (_prev->dead) {
-		apr_thread_t *thread=_prev->thread;
-		apr_thread_mutex_destroy(_prev->sched_mutex);
-		free(_prev);
-		apr_thread_exit(thread, 0);
-	}
-}
-
-static apr_thread_mutex_t *helper_mutex;
-
-static void* APR_THREAD_FUNC helper(apr_thread_t *thr, void *arg)
-{
-        struct helper_arg *ha=(struct helper_arg*)arg;
-        int (*fn)(void*)=ha->fn;
-        void *farg=ha->arg;
-        struct thread_info *ti=ha->ti;
-
-        apr_thread_mutex_unlock(helper_mutex);
-        apr_thread_mutex_lock(ti->sched_mutex);
-        return (void*)fn(farg);
-}
-
-static void free_thread(void *arg)
-{
-        struct thread_info *ti=(struct thread_info*)arg;
-        ti->dead=1;
-        apr_thread_mutex_unlock(ti->sched_mutex);
-}
-
-static int new_thread(int (*fn)(void*), void *arg, void *ti)
-{
-        struct helper_arg ha = {
-                .fn = fn,
-                .arg = arg,
-                .ti = (struct thread_info*)ti
-        };
-        int rc;
-
-        rc = apr_thread_create(&ha.ti->thread, NULL, &helper, &ha, pool);
-        apr_thread_mutex_lock(helper_mutex);
-        return rc;
-}
 
 typedef struct {
 	apr_thread_mutex_t *lock;
 	int count;
 	apr_thread_cond_t *cond;
-} apr_sem_t;
+} apr_thread_sem_t;
+
+static void* sem_alloc(int count)
+{
+	apr_thread_sem_t *sem=malloc(sizeof(*sem));
+	apr_status_t status;
+
+	if (!sem)
+		return NULL;
+
+	sem->count=count;
+        status=apr_thread_mutex_create(&sem->lock, APR_THREAD_MUTEX_UNNESTED,
+				       pool);
+	if (status != APR_SUCCESS) {
+		free(sem);
+		return NULL;
+	}
+
+	status=apr_thread_cond_create(&sem->cond, pool);
+	if (status != APR_SUCCESS) {
+		apr_thread_mutex_destroy(sem->lock);
+		free(sem);
+		return NULL;
+	}
+
+	return sem;
+}
+
+static void sem_free(void *_sem)
+{
+	apr_thread_sem_t *sem=(apr_thread_sem_t*)_sem;
+
+	apr_thread_mutex_destroy(sem->lock);
+	apr_thread_cond_destroy(sem->cond);
+	free(sem);
+}
+
+static void sem_up(void *_sem)
+{
+	apr_thread_sem_t *sem=(apr_thread_sem_t*)_sem;
+
+	apr_thread_mutex_lock(sem->lock);
+	sem->count++;
+	if (sem->count > 0)
+		apr_thread_cond_signal(sem->cond);
+	apr_thread_mutex_unlock(sem->lock);
+}
+
+static void sem_down(void *_sem)
+{
+	apr_thread_sem_t *sem=(apr_thread_sem_t*)_sem;
+
+	apr_thread_mutex_lock(sem->lock);
+	while (sem->count <= 0)
+		apr_thread_cond_wait(sem->cond, sem->lock);
+	sem->count--;
+	apr_thread_mutex_unlock(sem->lock);
+}
+
+static void print(const char *str, int len)
+{
+	write(1, str, len);
+}
 
 static unsigned long long time(void)
 {
 	return apr_time_now()*1000;
 }
 
+struct bootstrap_arg {
+	void (*fn)(void *arg);
+	void *arg;
+};
 
-/*
- * APR does not provide timers -- the reason for this ugly hack.
- */
-static unsigned long long timer_exp;
-static apr_file_t *events_pipe_in, *events_pipe_out;
-static apr_pollset_t *pollset;
+static void* APR_THREAD_FUNC bootstrap_thread(apr_thread_t *thread, void *_arg)
+{
+	struct bootstrap_arg *barg=(struct bootstrap_arg*)_arg;
+	void (*fn)(void *arg)=barg->fn;
+	void *arg=barg->arg;
+
+	free(barg);
+	fn(arg);
+	return NULL;
+}
+
+static void* thread_create(void (*fn)(void*), void *arg)
+{
+	apr_thread_t *thread;
+	apr_status_t status;
+	struct bootstrap_arg *barg=malloc(sizeof(*barg));
+
+	if (!barg)
+		return NULL;
+
+	barg->fn=fn;
+	barg->arg=arg;
+
+	status=apr_thread_create(&thread, NULL, bootstrap_thread, barg, pool);
+
+	if (status != APR_SUCCESS)
+		return NULL;
+
+        return thread;
+}
+
+static void thread_exit(void *thread)
+{
+	apr_thread_exit((apr_thread_t*)thread, 0);
+}
+
+static apr_file_t *pipe_in, *pipe_out;
 
 static void timer(unsigned long delta)
 {
-	if (delta)
-		timer_exp=time()+delta;
-	else
-		timer_exp=0;
+	apr_file_write_full(pipe_out, &delta, sizeof(delta), NULL);
 }
 
-static void exit_idle(void)
+/*
+ * FIXME: destroy thread at shutdown.
+ */
+static void* APR_THREAD_FUNC timer_thread(apr_thread_t *thr, void *arg)
 {
-	char c = 0;
-	apr_size_t n=1;
-	
-	apr_file_write(events_pipe_out, &c, &n);
-}
-
-static void enter_idle(int halted)
-{
-	signed long long delta=timer_exp-time();
-	apr_int32_t num=0;
+	apr_int32_t num;
+	apr_status_t status;
 	const apr_pollfd_t *descriptors;
+	static apr_pollset_t *pollset;
+	apr_interval_time_t timeout_us=-1;
+	unsigned long timeout_ns;
 
-	if (!timer_exp && !halted)
-		apr_pollset_poll(pollset, 0, &num, &descriptors);
-	else {
-		if (delta > 0 && !halted) {
-			apr_pollset_poll(pollset, delta/1000, &num, &descriptors);
+	apr_pollset_create(&pollset, 1, pool, 0);
+	apr_file_pipe_create(&pipe_in, &pipe_out, pool);
+	apr_pollfd_t apfd = {
+		.p = pool,
+		.desc_type = APR_POLL_FILE,
+		.reqevents = APR_POLLIN,
+		.desc = {
+			.f = pipe_in
 		}
+	};
+	apr_pollset_add(pollset, &apfd);
+
+	while (1) {
+		status=apr_pollset_poll(pollset, timeout_us, &num,
+					&descriptors);
+		timeout_us=-1;
+		
+		if (status != APR_SUCCESS) {
+			if (!APR_STATUS_IS_TIMEUP(status)) {
+				char buffer[128];
+				printf("lkl: timer error: %s!\n", 
+				       apr_strerror(status, buffer, sizeof(buffer)));
+			}
+			linux_trigger_irq(TIMER_IRQ);
+			continue;
+		}
+
+		apr_file_read_full(pipe_in, &timeout_ns,
+				   sizeof(timeout_ns), NULL);
+		timeout_us=timeout_ns / 1000; 
+		/* 
+		 * apr, when using poll: timeout/=1000
+		 *
+		 * while(1){poll(,,0);} is really while(1);. Not to
+		 * mention that we will generate a zillion interrupts
+		 * while doing it.
+		 */
+		if (timeout_us < 1000) 
+			timeout_us=1000; 
 	}
 
-	if (num > 0) {
-		char c;
-		apr_size_t n=1;
-		apr_file_read(events_pipe_in, &c, &n);
-	}
-
-	if (timer_exp <= time()) {
-		timer_exp=0;
-		linux_trigger_irq(TIMER_IRQ);
-	}
+	return NULL;
 }
 
 static long panic_blink(long time)
@@ -159,61 +199,19 @@ static long panic_blink(long time)
 	return 0;
 }
 
-static void *_phys_mem;
+static void *phys_mem;
+static unsigned long phys_mem_size;
 
-static void mem_init(unsigned long *phys_mem, unsigned long *phys_mem_size)
+static unsigned long mem_init(unsigned long *phys_mem)
 {
-	*phys_mem_size=16*1024*1024;
-	*phys_mem=(unsigned long)malloc(*phys_mem_size);
+	*phys_mem=(unsigned long)malloc(phys_mem_size);
+	return phys_mem_size;
 }
 
 static void halt(void)
 {
-	free(_phys_mem);
+	free(phys_mem);
 }
-
-static apr_thread_mutex_t *syscall_mutex;
-static apr_thread_mutex_t *wait_syscall_mutex;
-
-void syscall_done(void *arg)
-{
-	apr_thread_mutex_unlock(wait_syscall_mutex);
-}
-
-void* syscall_prepare(void)
-{
-	apr_thread_mutex_lock(syscall_mutex);
-	return NULL;
-}
-
-void syscall_wait(void *arg)
-{
-	apr_thread_mutex_lock(wait_syscall_mutex);
-	apr_thread_mutex_unlock(syscall_mutex);
-}
-
-void print(const char *data, int len)
-{
-	write(1, data, len);
-}
-
-static struct linux_native_operations nops = {
-	.panic_blink = panic_blink,
-	.mem_init = mem_init,
-	.halt = halt,
-	.thread_info_alloc = thread_info_alloc,
-	.new_thread = new_thread,
-	.free_thread = free_thread,
-	.context_switch = context_switch,
-	.enter_idle = enter_idle,
-	.exit_idle = exit_idle,
-	.time = time,
-	.timer = timer,
-	.syscall_prepare = syscall_prepare,
-	.syscall_done = syscall_done,
-	.syscall_wait = syscall_wait,
-	.print = print
-};
 
 static int (*app_init)(void);
 static apr_thread_mutex_t *init_mutex;
@@ -225,6 +223,24 @@ static int init(void)
 	return ret;
 }
 
+
+static struct linux_native_operations nops = {
+	.panic_blink = panic_blink,
+	.mem_init = mem_init,
+	.halt = halt,
+	.thread_create = thread_create,
+	.thread_exit = thread_exit,
+	.sem_alloc = sem_alloc,
+	.sem_free = sem_free,
+	.sem_up = sem_up,
+	.sem_down = sem_down,
+	.time = time,
+	.timer = timer,
+	.init = init,
+	.print = print,
+};
+
+
 static void* APR_THREAD_FUNC init_thread(apr_thread_t *thr, void *arg)
 {
 	linux_start_kernel(&nops, "");
@@ -232,37 +248,21 @@ static void* APR_THREAD_FUNC init_thread(apr_thread_t *thr, void *arg)
 	return NULL;
 }
 
-static apr_thread_t *init_thread_handle;
-
-void lkl_env_init(int (*_init)(void))
+/* FIXME: check for errors */
+int lkl_env_init(int (*_init)(void), unsigned long mem_size)
 {
+	apr_thread_t *a, *b;
+
 	app_init=_init;
-	nops.init=init;
+	phys_mem_size=mem_size;
 
 	apr_pool_create(&pool, NULL);
-
-	apr_thread_mutex_create(&helper_mutex, APR_THREAD_MUTEX_UNNESTED, pool);
-        apr_thread_mutex_lock(helper_mutex);
-
-	apr_pollset_create(&pollset, 1, pool, 0);
-	apr_file_pipe_create(&events_pipe_in, &events_pipe_out, pool);
-	apr_pollfd_t apfd = {
-		.p = pool,
-		.desc_type = APR_POLL_FILE,
-		.reqevents = APR_POLLIN,
-		.desc = {
-			.f = events_pipe_in
-		}
-	};
-	apr_pollset_add(pollset, &apfd);
-
+	apr_thread_create(&a, NULL, timer_thread, NULL, pool);
 	apr_thread_mutex_create(&init_mutex, APR_THREAD_MUTEX_UNNESTED, pool);
-        apr_thread_mutex_lock(init_mutex);
-	apr_thread_create(&init_thread_handle, NULL, init_thread, NULL, pool);
+	apr_thread_mutex_lock(init_mutex);
+	apr_thread_create(&b, NULL, init_thread, NULL, pool);
         apr_thread_mutex_lock(init_mutex);
 
-	apr_thread_mutex_create(&syscall_mutex, APR_THREAD_MUTEX_UNNESTED, pool);
-	apr_thread_mutex_create(&wait_syscall_mutex, APR_THREAD_MUTEX_UNNESTED, pool);
-	apr_thread_mutex_lock(wait_syscall_mutex);
+	return 0;
 }
 

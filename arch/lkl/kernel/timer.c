@@ -59,7 +59,7 @@ static irqreturn_t timer_irq(int irq, void *dev_id)
         struct clock_event_device *dev=(struct clock_event_device*)dev_id;
 
         dev->event_handler(dev);
-        
+
         return IRQ_HANDLED;
 }
   
@@ -98,9 +98,8 @@ static struct irqaction irq0  = {
 
 void __init time_init(void)
 {
-        if (!linux_nops->enter_idle || !linux_nops->exit_idle || 
-	    !linux_nops->timer || !linux_nops->time) 
-		return;
+	BUG_ON(!linux_nops->timer || !linux_nops->time);
+
 
 	setup_irq(0, &irq0);
 

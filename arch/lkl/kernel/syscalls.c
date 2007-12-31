@@ -11,9 +11,9 @@
 #include <linux/net.h>
 
 /*
- * sys_mount (is sloppy?? and) copies a full page from dev_name, type and
- * data. This can trigger page faults (which a normal trigger would
- * ignore). 
+ * sys_mount (is sloppy?? and) copies a full page from dev_name, type and data
+ * which can trigger page faults (which a normal kernel can safely
+ * ignore). Make sure we don't trigger page fauls.
  */
 asmlinkage long sys_safe_mount(char __user *dev_name, char __user *dir_name,
 				char __user *type, unsigned long flags,
@@ -105,7 +105,7 @@ void init_syscall_table(void)
 struct syscall_req {
 	int syscall;
 	long params[6], ret;
-	void *data;
+	void *sem;
 	struct list_head lh;
 };
 
@@ -165,7 +165,7 @@ static inline long do_syscall(struct syscall_req *sr)
 						   sr->params[4],
 						   sr->params[5]);
 	sr->ret=ret;
-	linux_nops->syscall_done(sr->data);
+	linux_nops->sem_up(sr->sem);
 	return ret;
 }
 
@@ -198,6 +198,8 @@ int __init syscall_init(void)
 	return 0;
 }
 
+
+
 /*
  * The system call stubs, provided for application convenince.
  */
@@ -206,11 +208,14 @@ int __init syscall_init(void)
 	struct syscall_req sr = {	\
 		.syscall = __NR_##_syscall,	\
 		.params = { _params },		\
+		.sem = linux_nops->sem_alloc(0), \
 	};					\
-	sr.data=linux_nops->syscall_prepare(); \
+	if (!sr.sem) \
+		return -ENOMEM; \
 	linux_trigger_irq_with_data(SYSCALL_IRQ, &sr); \
-	linux_nops->syscall_wait(sr.data); \
-	return sr.ret; \
+	linux_nops->sem_down(sr.sem); \
+	linux_nops->sem_free(sr.sem); \
+	return sr.ret; 
 
 
 long lkl_sys_sync(void)
@@ -381,16 +386,16 @@ long lkl_sys_ioctl(unsigned int fd, unsigned int cmd, unsigned long arg)
  * Halt is special as we want to call syscall_done after the kernel has been
  * halted, in linux_start_kernel. 
  */
-void *halt_data;
+void *halt_syscall_sem;
 
 long lkl_sys_halt(void)
 {
 	struct syscall_req sr = {	
 		.syscall = __NR_reboot,
 	};
-	halt_data=sr.data=linux_nops->syscall_prepare();
+	halt_syscall_sem=sr.sem=linux_nops->sem_alloc(0);
 	linux_trigger_irq_with_data(SYSCALL_IRQ, &sr);
-	linux_nops->syscall_wait(sr.data);
+	linux_nops->sem_down(sr.sem);
 	return sr.ret;
 }     
 

@@ -157,11 +157,11 @@ SECTIONS
         . = ALIGN(4096);
 	
         .bss : {
-                VMLINUX_SYMBOL(__bss_start) = .;
+                VMLINUX_SYMBOL(__start_bss) = .;
 		*(.sbss) *(.scommon)
                 *(.dynbss)
                 *(.bss)
-                VMLINUX_SYMBOL(__bss_stop) = .;
+                VMLINUX_SYMBOL(__stop_bss) = .;
         }
 
         VMLINUX_SYMBOL(_end) = . ;

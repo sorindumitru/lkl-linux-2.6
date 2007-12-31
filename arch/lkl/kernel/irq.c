@@ -47,35 +47,40 @@ struct irq_data {
 	struct pt_regs regs;
 };
 
-struct irq_shot {
+static struct irq_info {
         struct list_head data_list;
         int no_data_count;
-} irq_shots[NR_IRQS];
+	void *lock;
+} irqs [NR_IRQS];
+
+static void *sem;
 
 void linux_trigger_irq(int irq)
 {
-	BUG_ON(linux_nops->exit_idle == NULL);
 	BUG_ON(irq >= NR_IRQS);
 
-        irq_shots[irq].no_data_count++;
+	linux_nops->sem_down(irqs[irq].lock);
+        irqs[irq].no_data_count++;
+	linux_nops->sem_up(irqs[irq].lock);
 
-        linux_nops->exit_idle();
+	linux_nops->sem_up(sem);
 }
 
 int linux_trigger_irq_with_data(int irq, void *data)
 {
 	struct irq_data *is;
 
-	BUG_ON(linux_nops->exit_idle == NULL);
 	BUG_ON(irq >= NR_IRQS);
 
 	if (!(is=kmalloc(sizeof(*is), GFP_ATOMIC)))
 		return -ENOMEM;
 
+	linux_nops->sem_down(irqs[irq].lock);
 	is->regs.irq_data=data;
-	list_add_tail(&is->list, &irq_shots[irq].data_list);
+	list_add_tail(&is->list, &irqs[irq].data_list);
+	linux_nops->sem_up(irqs[irq].lock);
 
-        linux_nops->exit_idle();
+	linux_nops->sem_up(sem);
 
 	return 0;
 }
@@ -86,15 +91,17 @@ static int dequeue_data(int irq, struct pt_regs *regs)
 	struct list_head *i;
 	struct irq_data *is=NULL;
 
-	list_for_each(i, &irq_shots[irq].data_list) {
+	linux_nops->sem_down(irqs[irq].lock);
+	list_for_each(i, &irqs[irq].data_list) {
 		is=list_entry(i, struct irq_data, list);
+		list_del(&is->list);
 		break;
 	}
+	linux_nops->sem_up(irqs[irq].lock);
 
 	if (!is)
 		return -ENOENT;
 
-	list_del(&is->list);
 	*regs=is->regs;
 	kfree(is);
 
@@ -103,10 +110,18 @@ static int dequeue_data(int irq, struct pt_regs *regs)
 
 static int dequeue_nodata(int irq, struct pt_regs *regs)
 {
-        if (irq_shots[irq].no_data_count <= 0)
+	int count;
+
+
+	linux_nops->sem_down(irqs[irq].lock);
+	count=irqs[irq].no_data_count;
+	if (count > 0)
+		irqs[irq].no_data_count--;
+	linux_nops->sem_up(irqs[irq].lock);
+
+        if (count <= 0)
                 return -ENOENT;
-        
-        irq_shots[irq].no_data_count--;
+
         return 0;
 }
 
@@ -120,7 +135,8 @@ void run_irqs(void)
 		struct pt_regs regs;
 		int i;
 
-		linux_nops->enter_idle(linux_halted);
+		if (!linux_halted)
+			linux_nops->sem_down(sem);
 
                 for(i=0; i<NR_IRQS; i++) {
                         while (dequeue_nodata(i, &regs) == 0)
@@ -150,8 +166,6 @@ static void rcu_func(struct rcu_head *h)
 void cpu_idle(void)
 {
 	int loop=1;
-
-	BUG_ON(linux_nops->enter_idle == NULL);
 
 	while (loop) {
 		/*
@@ -188,16 +202,17 @@ void cpu_idle(void)
 void init_IRQ(void)
 {
 	int i;
-	
-	if (!linux_nops->enter_idle || !linux_nops->exit_idle)
-		return;
 
+	BUG_ON((sem=linux_nops->sem_alloc(0)) == NULL);
+
+	
 	for(i=0; i<NR_IRQS; i++) {
-		INIT_LIST_HEAD(&irq_shots[i].data_list);
+		BUG_ON((irqs[i].lock=linux_nops->sem_alloc(1)) == NULL);
+		INIT_LIST_HEAD(&irqs[i].data_list);
 		set_irq_chip_and_handler(i, &dummy_irq_chip, handle_simple_irq);
 	}
 
-	printk(KERN_INFO "lkl: with IRQ support\n");
+	printk(KERN_INFO "lkl: IRQs initialized\n");
 }
 
 

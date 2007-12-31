@@ -84,7 +84,7 @@ void __init setup_arch(char **cl)
 {
         *cl=cmd_line;
         panic_blink=linux_nops->panic_blink;
-	set_private_thread_info(&init_thread_union.thread_info, linux_nops->thread_info_alloc());
+	setup_init_thread_info();
 
         mem_init_0();
 }
@@ -129,7 +129,7 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 	return -1;
 }
 
-extern void *halt_data;
+extern void *halt_syscall_sem;
 
 int linux_start_kernel(struct linux_native_operations *nops, const char *fmt, ...)
 {
@@ -158,7 +158,7 @@ int linux_start_kernel(struct linux_native_operations *nops, const char *fmt, ..
 	/* 
 	 * Finish the system call. 
 	 */
-	linux_nops->syscall_done(halt_data);
+	linux_nops->sem_up(halt_syscall_sem);
 
 	return init_err;
 }
