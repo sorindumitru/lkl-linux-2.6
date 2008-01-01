@@ -22,7 +22,7 @@ static void complete_request(struct lkl_disk_cs *cs)
 {
 	struct request *req=(struct request*)cs->linux_cookie;
 
-	end_that_request_first(req, cs->status, req->hard_nr_sectors);
+	end_that_request_first(req, cs->status, req->current_nr_sectors);
 	end_that_request_last(req, cs->status);
 
 	kfree(cs);
@@ -56,13 +56,15 @@ static void lkl_disk_request(request_queue_t *q)
 			continue;
 		}
 
-		blkdev_dequeue_request(req);
-
 		cs->linux_cookie=req;
 		lkl_disk_do_rw(dev->data, req->sector, req->current_nr_sectors,
 			       req->buffer, rq_data_dir(req), cs);
-		if (cs->sync)
-			complete_request(cs);
+		/*
+		 * Async is broken.
+		 */
+		BUG_ON (cs->sync == 0);
+		end_request(req, cs->status);
+
 	}
 }
 
