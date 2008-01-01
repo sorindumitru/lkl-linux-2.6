@@ -172,6 +172,7 @@ static inline long do_syscall(struct syscall_req *sr)
 
 int run_syscalls(void)
 {
+	snprintf(current->comm, sizeof(current->comm), "syscalld");
 	while (1) {
 		struct syscall_req *sr=linux_wait_syscall_request();
 		if (sr->syscall == __NR_reboot) 
