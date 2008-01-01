@@ -3,9 +3,10 @@
 
 #ifdef __GNUC__
 #ifdef i386
-
 #define BITS_PER_LONG 32
+#ifndef LITTLE_ENDIAN
 #define LITTLE_ENDIAN
+#endif
 #define mb() barrier()
 
 #define ELF_CLASS	ELFCLASS32

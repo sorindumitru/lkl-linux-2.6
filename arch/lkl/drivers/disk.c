@@ -85,7 +85,7 @@ static struct block_device_operations lkl_disk_ops = {
 
 static int major, failed_init;
 
-int lkl_disk_add_disk(void *data, const char *name, int which, int sectors)
+__kernel_dev_t lkl_disk_add_disk(void *data, const char *name, int which, int sectors)
 {
 	struct lkl_disk_dev *dev;
 
