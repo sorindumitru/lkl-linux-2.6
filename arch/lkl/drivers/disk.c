@@ -22,7 +22,7 @@ static void complete_request(struct lkl_disk_cs *cs)
 {
 	struct request *req=(struct request*)cs->linux_cookie;
 
-	end_that_request_first(req, cs->status, req->hard_cur_sectors);
+	end_that_request_first(req, cs->status, req->hard_nr_sectors);
 	end_that_request_last(req, cs->status);
 
 	kfree(cs);
