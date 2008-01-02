@@ -66,6 +66,12 @@ long lkl_mount_dev(__kernel_dev_t dev, char *fs_type, int flags,
 	if (err < 0)
 		return err;
 
+	if (lkl_sys_access("/mnt", 0700) < 0) {
+		err=lkl_sys_mkdir("/mnt", 0700);
+		if (err < 0) 
+			return err;
+	}
+
 	err=lkl_sys_mkdir(mnt_str, 0700);
 	if (err < 0) {
 		lkl_sys_unlink(dev_str);
@@ -93,7 +99,7 @@ long lkl_umount_dev(__kernel_dev_t dev, int flags)
 	
 
 	snprintf(dev_str, sizeof(dev_str), "/dev/%016x", dev);
-	snprintf(mnt_str, sizeof(mnt_str), "/dev/%016x", dev);
+	snprintf(mnt_str, sizeof(mnt_str), "/mnt/%016x", dev);
 
 	err=lkl_sys_umount(mnt_str, 0);
 

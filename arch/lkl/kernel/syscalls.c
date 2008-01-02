@@ -108,6 +108,7 @@ void init_syscall_table(void)
 #endif
 	INIT_STE(ioctl);
 	INIT_STE(call);
+	INIT_STE(access);
 }
 
 struct syscall_req {
@@ -420,6 +421,11 @@ long lkl_sys_call(long f, long arg1, long arg2, long arg3, long arg4, long arg5)
 long lkl_sys_statfs(const char *path, struct statfs *buf)
 {
 	SYSCALL_REQ(statfs, (long)path, (long)buf);
+}
+
+long lkl_sys_access(const char *filename, int mode)
+{
+	SYSCALL_REQ(access, (long)filename, mode);
 }
 
 

@@ -39,7 +39,8 @@
 #define __NR_socketcall 33
 #define __NR_ioctl 34
 #define __NR_call 35
-#define NR_syscalls 36
+#define __NR_access 36
+#define NR_syscalls 37
 
 /* TODO */
 #define __NR_restart_syscall 0
@@ -56,7 +57,6 @@
 #define __NR_ptrace 0
 #define __NR_alarm 0
 #define __NR_pause 0
-#define __NR_access 0
 #define __NR_kill 0
 #define __NR_dup 0
 #define __NR_pipe 0

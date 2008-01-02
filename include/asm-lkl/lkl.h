@@ -98,6 +98,7 @@ long lkl_sys_umask(int mask);
 long lkl_sys_getuid(void);
 long lkl_sys_getgid(void);
 long lkl_sys_call(long f, long arg1, long arg2, long arg3, long arg4, long arg5);
+long lkl_sys_access(const char *filename, int mode);
 
 
 int sprintf(char * buf, const char * fmt,
