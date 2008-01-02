@@ -1,6 +1,5 @@
-#include <lklvfs.h>
+#include <ddk/ntddk.h>
 #include <asm/callbacks.h>
-
 #include <asm-lkl/disk.h>
 
 #ifdef ASYNC

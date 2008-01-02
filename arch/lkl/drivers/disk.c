@@ -85,9 +85,19 @@ static struct block_device_operations lkl_disk_ops = {
 };
 
 
-static int major, failed_init;
+static int major, failed_init, disks;
 
-__kernel_dev_t lkl_disk_add_disk(void *data, const char *name, int which, int sectors)
+int lkl_disk_del_disk(__kernel_dev_t dev)
+{
+	struct block_device *bdev=bdget(dev);
+	if (!bdev || bdev->bd_disk->major != major)
+		return -EINVAL;
+        del_gendisk(bdev->bd_disk);
+	bdput(bdev);
+	return 0;
+}
+
+__kernel_dev_t lkl_disk_add_disk(void *data, int sectors)
 {
 	struct lkl_disk_dev *dev;
 
@@ -117,18 +127,20 @@ __kernel_dev_t lkl_disk_add_disk(void *data, const char *name, int which, int se
 		return 0;
 	}
 
-
 	dev->gd->major = major;
-	dev->gd->first_minor = which;
+	dev->gd->first_minor = disks;
 	dev->gd->fops = &lkl_disk_ops;
 	dev->gd->queue = dev->queue;
 	dev->gd->private_data = dev;
-	snprintf (dev->gd->disk_name, 32, "%s", name);
+	snprintf (dev->gd->disk_name, 32, "lkldisk%d", disks);
 	set_capacity(dev->gd, sectors);
 
 	add_disk(dev->gd);
 
+	disks++;
+
 	printk("lkldisk: attached %s @ dev=%d:%d\n", dev->gd->disk_name, dev->gd->major, dev->gd->first_minor);
+
 	return new_encode_dev(MKDEV(dev->gd->major, dev->gd->first_minor));
 }
 

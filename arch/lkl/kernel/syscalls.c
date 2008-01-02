@@ -10,6 +10,9 @@
 #include <linux/syscalls.h>
 #include <linux/net.h>
 
+static long sys_call(long _f, long arg1, long arg2, long arg3, long arg4, long arg5);
+
+
 /*
  * sys_mount (is sloppy?? and) copies a full page from dev_name, type and data
  * which can trigger page faults (which a normal kernel can safely
@@ -67,6 +70,7 @@ syscall_t syscall_table[NR_syscalls];
 
 void init_syscall_table(void)
 {
+	INIT_STE(ni_syscall);
 	INIT_STE(sync);
 	INIT_STE(reboot);
 	INIT_STE(write);
@@ -96,10 +100,14 @@ void init_syscall_table(void)
 	INIT_STE(chroot);
 	INIT_STE(getcwd);
 	INIT_STE(chown);
+	INIT_STE(umask);
+	INIT_STE(getuid);
+	INIT_STE(getgid);
 #ifdef CONFIG_NET
 	INIT_STE(socketcall);
 #endif
 	INIT_STE(ioctl);
+	INIT_STE(call);
 }
 
 struct syscall_req {
@@ -316,7 +324,7 @@ long lkl_sys_utimes(const char *filename, struct timeval *utimes)
 
 long lkl_sys_mount(const char *dev, const char *mnt_point, const char *fs, int flags, void *data)
 {
-	SYSCALL_REQ(mount, (long)dev, (long)mnt_point, (long)fs, flags, (long)data);
+	SYSCALL_REQ(safe_mount, (long)dev, (long)mnt_point, (long)fs, flags, (long)data);
 }
 
 
@@ -380,6 +388,38 @@ long lkl_sys_connect(int sock, struct sockaddr *saddr, int len)
 long lkl_sys_ioctl(unsigned int fd, unsigned int cmd, unsigned long arg)
 {
 	SYSCALL_REQ(ioctl, fd, cmd, arg);
+}
+
+long lkl_sys_umask(int mask)
+{
+	SYSCALL_REQ(umask, mask);
+}
+
+long lkl_sys_getuid(void)
+{
+	SYSCALL_REQ(getuid);
+}
+
+long lkl_sys_getgid(void)
+{
+	SYSCALL_REQ(getgid);
+}
+
+long sys_call(long _f, long arg1, long arg2, long arg3, long arg4, long arg5)
+{
+	long (*f)(long arg1, long arg2, long arg3, long arg4, long arg5)=
+		(long (*)(long, long, long, long, long))_f;
+	return f(arg1, arg2, arg3, arg4, arg5);
+}
+
+long lkl_sys_call(long f, long arg1, long arg2, long arg3, long arg4, long arg5)
+{
+	SYSCALL_REQ(call, f, arg1, arg2, arg3, arg4, arg5);
+}
+
+long lkl_sys_statfs(const char *path, struct statfs *buf)
+{
+	SYSCALL_REQ(statfs, (long)path, (long)buf);
 }
 
 

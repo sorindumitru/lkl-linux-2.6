@@ -48,7 +48,9 @@ struct __kernel_utimbuf {
 	__kernel_time_t modtime;
 };
 
+#ifndef __KERNEL__
 typedef __u32 __kernel_dev_t;
+#endif
 
 struct __kernel_dirent {
 	unsigned long	d_ino;
@@ -92,6 +94,11 @@ long lkl_sys_send(int sock, void *buffer, __kernel_size_t size, unsigned flags);
 long lkl_sys_recv(int sock, void *buffer, __kernel_size_t size, unsigned flags);
 long lkl_sys_ioctl(unsigned int fd, unsigned int cmd, unsigned long arg);
 long lkl_sys_connect(int sock, struct sockaddr *saddr, int len);
+long lkl_sys_umask(int mask);
+long lkl_sys_getuid(void);
+long lkl_sys_getgid(void);
+long lkl_sys_call(long f, long arg1, long arg2, long arg3, long arg4, long arg5);
+
 
 int sprintf(char * buf, const char * fmt,
 	    ...) __attribute__ ((format (printf, 2, 3)));
@@ -99,6 +106,8 @@ int snprintf(char * buf, __kernel_size_t size, const char * fmt,
 	     ...) __attribute__ ((format (printf, 3, 4)));
 int sscanf(const char *, const char *,
 	   ...) __attribute__ ((format (scanf, 2, 3)));
+extern char * strchr(const char *,int);
+extern __kernel_size_t strlen(const char *);
 
 
 

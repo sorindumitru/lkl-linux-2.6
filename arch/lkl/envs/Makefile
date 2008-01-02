@@ -16,7 +16,7 @@ DRV=$(if $(CONFIG_LKL_DRV_DISK),disk) $(if $(CONFIG_LKL_DRV_ETH),eth)
 DRV_OBJS=$(patsubst %,$(obj)/drivers/$(ENV)/%.o,$(DRV))
 
 
-env.a: $(patsubst %,$(obj)/%.o,$(ENV)) $(DRV_OBJS)
+env.a: $(patsubst %,$(obj)/%.o,$(ENV)) $(DRV_OBJS) $(obj)/lib/*.o
 	$(CROSS_COMPILE)ar -rc $@ $^
 	$(CROSS_COMPILE)ranlib $@
 

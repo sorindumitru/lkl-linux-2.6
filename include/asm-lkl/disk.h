@@ -15,7 +15,7 @@ struct lkl_disk_cs {
 void lkl_disk_do_rw(void *f, unsigned long sector, unsigned long nsect,
 		    char *buffer, int dir, struct lkl_disk_cs *cs);
 
-__kernel_dev_t lkl_disk_add_disk(void *data, const char *name, int which,
-				 int sectors);
+__kernel_dev_t lkl_disk_add_disk(void *data, int sectors);
+int lkl_disk_del_disk(__kernel_dev_t dev);
 
 #endif
