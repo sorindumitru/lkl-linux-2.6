@@ -40,7 +40,12 @@
 #define __NR_ioctl 34
 #define __NR_call 35
 #define __NR_access 36
-#define NR_syscalls 37
+#define __NR_truncate 37
+#define __NR_pread64 38
+#define __NR_lkl_pread64 38
+#define __NR_pwrite64 39
+#define __NR_lkl_pwrite64 39
+#define NR_syscalls 40
 
 /* TODO */
 #define __NR_restart_syscall 0
@@ -90,7 +95,6 @@
 #define __NR_swapon 0
 #define __NR_mmap 0
 #define __NR_munmap 0
-#define __NR_truncate 0
 #define __NR_ftruncate 0
 #define __NR_fchmod 0
 #define __NR_fchown 0
@@ -153,8 +157,6 @@
 #define __NR_rt_sigtimedwait 0
 #define __NR_rt_sigqueueinfo 0
 #define __NR_rt_sigsuspend 0
-#define __NR_pread64 0
-#define __NR_pwrite64 0
 #define __NR_capget 0
 #define __NR_capset 0
 #define __NR_sigaltstack 0

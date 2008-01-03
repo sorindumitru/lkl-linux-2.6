@@ -61,6 +61,17 @@ out_free:
 	return err;
 }
 
+ssize_t sys_lkl_pwrite64(unsigned int fd, const char *buf, size_t count,
+		       off_t pos_hi, off_t pos_lo)
+{
+	return sys_pwrite64(fd, buf, count, ((loff_t)pos_hi<<32)+pos_lo);
+}
+
+ssize_t sys_lkl_pread64(unsigned int fd, const char *buf, size_t count,
+		       off_t pos_hi, off_t pos_lo)
+{
+	return sys_pwrite64(fd, buf, count, ((loff_t)pos_hi<<32)+pos_lo);	
+}
 
 typedef long (*syscall_t)(long arg1, ...);
 
@@ -109,6 +120,9 @@ void init_syscall_table(void)
 	INIT_STE(ioctl);
 	INIT_STE(call);
 	INIT_STE(access);
+	INIT_STE(truncate);
+	INIT_STE(lkl_pwrite64);
+	INIT_STE(lkl_pwrite64);
 }
 
 struct syscall_req {
@@ -428,6 +442,20 @@ long lkl_sys_access(const char *filename, int mode)
 	SYSCALL_REQ(access, (long)filename, mode);
 }
 
+long lkl_sys_truncate(const char *path, unsigned long length)
+{
+	SYSCALL_REQ(truncate, (long)path, length);
+}
+
+ssize_t lkl_sys_pwrite64(unsigned int fd, const char *buf, size_t count, loff_t pos)
+{
+	SYSCALL_REQ(lkl_pwrite64, fd, (long)buf, count, (pos >> 32),(pos & 0xffffffff));
+}
+
+ssize_t lkl_sys_pread64(unsigned int fd, char *buf, size_t count, loff_t pos)
+{
+	SYSCALL_REQ(lkl_pwrite64, fd, (long)buf, count, (pos >> 32),(pos & 0xffffffff));
+}
 
 /* 
  * Halt is special as we want to call syscall_done after the kernel has been

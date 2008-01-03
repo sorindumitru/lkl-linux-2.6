@@ -99,6 +99,11 @@ long lkl_sys_getuid(void);
 long lkl_sys_getgid(void);
 long lkl_sys_call(long f, long arg1, long arg2, long arg3, long arg4, long arg5);
 long lkl_sys_access(const char *filename, int mode);
+long lkl_sys_truncate(const char *path, unsigned long length);
+__kernel_ssize_t lkl_sys_pwrite64(unsigned int fd, const char *buf,
+				  __kernel_size_t count, __kernel_loff_t pos);
+__kernel_ssize_t lkl_sys_pread64(unsigned int fd, char *buf,
+				 __kernel_size_t count, __kernel_loff_t pos);
 
 
 int sprintf(char * buf, const char * fmt,
