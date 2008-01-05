@@ -72,7 +72,7 @@ int linux_trigger_irq_with_data(int irq, void *data)
 
 	BUG_ON(irq >= NR_IRQS);
 
-	if (!(is=kmalloc(sizeof(*is), GFP_ATOMIC)))
+	if (!(is=linux_nops->mem_alloc(sizeof(*is))))
 		return -ENOMEM;
 
 	linux_nops->sem_down(irqs[irq].lock);
@@ -103,7 +103,7 @@ static int dequeue_data(int irq, struct pt_regs *regs)
 		return -ENOENT;
 
 	*regs=is->regs;
-	kfree(is);
+	linux_nops->mem_free(is);
 
 	return 0;
 }
