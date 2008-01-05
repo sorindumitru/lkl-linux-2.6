@@ -171,6 +171,7 @@ static void* APR_THREAD_FUNC timer_thread(apr_thread_t *thr, void *arg)
 				char buffer[128];
 				printf("lkl: timer error: %s!\n", 
 				       apr_strerror(status, buffer, sizeof(buffer)));
+				continue;
 			}
 			linux_trigger_irq(TIMER_IRQ);
 			continue;
