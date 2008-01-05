@@ -162,9 +162,10 @@ int linux_start_kernel(struct linux_native_operations *nops, const char *fmt, ..
 	mem_cleanup();
 
 	/* 
-	 * Finish the system call. 
+	 * Finish the halt system call, if any. 
 	 */
-	linux_nops->sem_up(halt_syscall_sem);
+	if (halt_syscall_sem)
+		linux_nops->sem_up(halt_syscall_sem);
 
 	return init_err;
 }

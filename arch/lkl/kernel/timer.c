@@ -47,8 +47,6 @@ static void clockevent_set_mode(enum clock_event_mode mode,
 		break;
 	case CLOCK_EVT_MODE_SHUTDOWN:
 	case CLOCK_EVT_MODE_UNUSED:
-		linux_nops->timer(0);
-		break;
 	case CLOCK_EVT_MODE_ONESHOT:
                 break;
 	}
@@ -66,10 +64,11 @@ static irqreturn_t timer_irq(int irq, void *dev_id)
 static int clockevent_next_event(unsigned long delta,
                                  struct clock_event_device *evt) 
 {
-        if (delta !=0 )
-                linux_nops->timer(delta);
-        else
-                linux_trigger_irq(TIMER_IRQ);
+	/* a few ns won't matter */
+        if (delta <= LKL_TIMER_LAST_OP)
+		delta=LKL_TIMER_LAST_OP+1;
+                
+	linux_nops->timer(delta);
 
         return 0;
 }
@@ -107,5 +106,7 @@ void __init time_init(void)
         
         clockevents_register_device(&clockevent);
 
-        printk("lkl: with timer support\n");
+	linux_nops->timer(LKL_TIMER_INIT);
+
+        printk("lkl: timer initialized\n");
 }

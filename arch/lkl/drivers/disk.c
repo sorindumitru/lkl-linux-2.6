@@ -87,7 +87,7 @@ static struct block_device_operations lkl_disk_ops = {
 
 static int major, failed_init, disks;
 
-int lkl_disk_del_disk(__kernel_dev_t dev)
+int _lkl_disk_del_disk(__kernel_dev_t dev)
 {
 	struct block_device *bdev=bdget(dev);
 	if (!bdev || bdev->bd_disk->major != major)
@@ -97,7 +97,7 @@ int lkl_disk_del_disk(__kernel_dev_t dev)
 	return 0;
 }
 
-__kernel_dev_t lkl_disk_add_disk(void *data, int sectors)
+__kernel_dev_t _lkl_disk_add_disk(void *data, int sectors)
 {
 	struct lkl_disk_dev *dev;
 

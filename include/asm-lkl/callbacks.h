@@ -48,10 +48,13 @@ struct linux_native_operations {
 	 */
 	int (*init)(void);
 
+	#define LKL_TIMER_INIT 0
+	#define LKL_TIMER_SHUTDOWN 1
+	#define LKL_TIMER_LAST_OP 1
         /*
          * Request a timer interrupt in delta nanoseconds, i.e. a
-         * linux_trigger_irq(TIMER_IRQ) call. If delta is zero, cancel
-         * the pending timer. 
+         * linux_trigger_irq(TIMER_IRQ) call. If delta <= LKL_TIMER_LAST_OP then
+         * it is a special timer request. 
          */
 	void (*timer)(unsigned long delta);
         

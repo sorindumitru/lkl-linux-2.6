@@ -56,21 +56,31 @@ static unsigned long long time(void)
 }
 
 static HANDLE timer;
+static int timer_done;
 
 static void set_timer(unsigned long delta)
 {
 	LARGE_INTEGER li = {
 		.QuadPart = -((long)(delta/100)),
 	};
+
+	if (delta == LKL_TIMER_INIT)
+		return;
+
+	if (delta == LKL_TIMER_SHUTDOWN) {
+		timer_done=1;
+		li.QuadPart=0;
+	}
         
 	SetWaitableTimer(timer, &li, 0, NULL, NULL, FALSE);
 }
 
-/* FIXME: terminate thread at shutdown */
 static DWORD WINAPI timer_thread(LPVOID arg)
 {
 	while (1) {
 		WaitForSingleObject(timer, INFINITE);
+		if (timer_done)
+			return 0;
 		linux_trigger_irq(TIMER_IRQ);
 	}
 }
@@ -88,13 +98,10 @@ static void print(const char *str, int len)
 
 static HANDLE init_sem;
 
-static int (*app_init)(void);
-
 static int init(void)
 {
-	int ret=app_init();
 	ReleaseSemaphore(init_sem, 1, NULL);
-	return ret;
+	return 0;
 }
 
 static struct linux_native_operations nops = {
@@ -121,9 +128,8 @@ static DWORD WINAPI init_thread(LPVOID arg)
 }
 
 /* FIXME: check for errors */
-int lkl_env_init(int (*_init)(void), unsigned long mem_size)
+int lkl_env_init(unsigned long mem_size)
 {
-	app_init=_init;
 	nops.phys_mem_size=mem_size;
 
 	timer=CreateWaitableTimer(NULL, FALSE, NULL);

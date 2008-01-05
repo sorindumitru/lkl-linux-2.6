@@ -137,9 +137,6 @@ static void timer(unsigned long delta)
 	apr_file_write_full(pipe_out, &delta, sizeof(delta), NULL);
 }
 
-/*
- * FIXME: destroy thread at shutdown.
- */
 static void* APR_THREAD_FUNC timer_thread(apr_thread_t *thr, void *arg)
 {
 	apr_int32_t num;
@@ -161,6 +158,9 @@ static void* APR_THREAD_FUNC timer_thread(apr_thread_t *thr, void *arg)
 	};
 	apr_pollset_add(pollset, &apfd);
 
+	/* wait for the Linux timer to be initialized */
+	apr_file_read_full(pipe_in, &timeout_ns, sizeof(timeout_ns), NULL);
+
 	while (1) {
 		status=apr_pollset_poll(pollset, timeout_us, &num,
 					&descriptors);
@@ -178,6 +178,8 @@ static void* APR_THREAD_FUNC timer_thread(apr_thread_t *thr, void *arg)
 
 		apr_file_read_full(pipe_in, &timeout_ns,
 				   sizeof(timeout_ns), NULL);
+		if (timeout_ns == LKL_TIMER_SHUTDOWN)
+			break;
 		timeout_us=timeout_ns / 1000; 
 		/* 
 		 * apr, when using poll: timeout/=1000
@@ -199,14 +201,12 @@ static long panic_blink(long time)
 	return 0;
 }
 
-static int (*app_init)(void);
 static apr_thread_mutex_t *init_mutex;
 
 static int init(void)
 {
-	int ret=app_init();
         apr_thread_mutex_unlock(init_mutex);
-	return ret;
+	return 0;
 }
 
 
@@ -235,11 +235,10 @@ static void* APR_THREAD_FUNC init_thread(apr_thread_t *thr, void *arg)
 }
 
 /* FIXME: check for errors */
-int lkl_env_init(int (*_init)(void), unsigned long mem_size)
+int lkl_env_init(unsigned long mem_size)
 {
 	apr_thread_t *a, *b;
 
-	app_init=_init;
 	nops.phys_mem_size=mem_size;
 
 	apr_pool_create(&pool, NULL);

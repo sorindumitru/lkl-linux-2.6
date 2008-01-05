@@ -57,20 +57,28 @@ static unsigned long long time(void)
 }
 
 static KTIMER timer;
+static int timer_done;
 
 static void set_timer(unsigned long delta)
 {
-	if (!delta)
-		KeCancelTimer(&timer);
-	else
-		KeSetTimer(&timer, RtlConvertLongToLargeInteger((unsigned long)(-(delta/100))), NULL);
+	if (delta == LKL_TIMER_INIT)
+		return;
+
+	if (delta == LKL_TIMER_SHUTDOWN) {
+		timer_done=1;
+		delta=0;
+	}
+
+	KeSetTimer(&timer, RtlConvertLongToLargeInteger((unsigned long)(-(delta/100))), NULL);
 }
 
-/* FIXME: terminate thread at shutdown */
+
 static void DDKAPI timer_thread(LPVOID arg)
 {
 	while (1) {
 		KeWaitForSingleObject(&timer, Executive, KernelMode, FALSE, NULL);
+		if (timer_done)
+			return;
 		linux_trigger_irq(TIMER_IRQ);
 	}
 }
@@ -100,13 +108,10 @@ static void print(const char *str, int len)
 
 static KSEMAPHORE init_sem;
 
-static int (*app_init)(void);
-
 static int init(void)
 {
-	int ret=app_init();
         KeReleaseSemaphore(&init_sem, 0, 1, 0);
-	return ret;
+	return 0;
 }
 
 static struct linux_native_operations nops = {
@@ -132,10 +137,9 @@ static void DDKAPI init_thread(LPVOID arg)
 }
 
 /* FIXME: check for errors */
-int lkl_env_init(int (*_init)(void), unsigned long mem_size)
+int lkl_env_init(unsigned long mem_size)
 {
 	HANDLE a, b;
-	app_init=_init;
 	nops.phys_mem_size=mem_size;
 
 	KeInitializeTimer(&timer);

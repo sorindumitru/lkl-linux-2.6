@@ -106,9 +106,6 @@ static void timer(unsigned long delta)
 	write(timer_pipe[1], &delta, sizeof(delta));
 }
 
-/*
- * FIXME: destroy thread at shutdown.
- */
 static void* timer_thread(void *arg)
 {
 	long timeout_ms=-1;
@@ -125,6 +122,9 @@ static void* timer_thread(void *arg)
 	}
 	pf.fd=timer_pipe[0];
 
+	/* wait for timer init */
+	read(timer_pipe[0], &timeout_ns, sizeof(unsigned long));
+
 	while (1) {
 		err=poll(&pf, 1, timeout_ms);
 		timeout_ms=-1;
@@ -132,6 +132,8 @@ static void* timer_thread(void *arg)
 		switch (err) {
 		case 1:
 			read(timer_pipe[0], &timeout_ns, sizeof(unsigned long));
+			if (timeout_ns == LKL_TIMER_SHUTDOWN)
+				return NULL;
 			timeout_ms=timeout_ns/1000000; 
 			/* 
 			 * while(1){poll(,,0);} is really while(1);. Not to
@@ -159,15 +161,12 @@ static long panic_blink(long time)
 	return 0;
 }
 
-static int (*app_init)(void);
-
 static pthread_mutex_t init_mutex=PTHREAD_MUTEX_INITIALIZER;
 
 static int init(void)
 {
-	int ret=app_init();
 	pthread_mutex_unlock(&init_mutex);
-	return ret;
+	return 0;
 }
 
 
@@ -195,12 +194,11 @@ static void* init_thread(void *arg)
 }
 
 /* FIXME: check for errors */
-int lkl_env_init(int (*_init)(), unsigned long mem_size)
+int lkl_env_init(unsigned long mem_size)
 {
 	/* don't really need them */
 	pthread_t a, b;
 
-	app_init=_init;
 	nops.phys_mem_size=mem_size;
 
         pthread_create(&b, NULL, timer_thread, NULL);
