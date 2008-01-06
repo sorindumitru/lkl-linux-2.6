@@ -3,6 +3,10 @@
 
 #include <asm-lkl/disk.h>
 
+/*
+ * FIXME: This ANSI version works with < 2GB files. Get rid of it and create
+ * proper versions for POSIX and NT.
+ */
 void lkl_disk_do_rw(void *data, unsigned long sector, unsigned long nsect,
 		   char *buffer, int dir, struct lkl_disk_cs *cs)
 {

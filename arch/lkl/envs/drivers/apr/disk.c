@@ -4,7 +4,7 @@
 void lkl_disk_do_rw(void *_file, unsigned long sector, unsigned long nsect,
 		   char *buffer, int dir, struct lkl_disk_cs *cs)
 {
-	apr_off_t offset=sector*512;
+	apr_off_t offset=(unsigned long long)sector*512;
 	apr_size_t len=nsect*512;
 	apr_file_t *file=(apr_file_t*)_file;
 	apr_status_t status;
