@@ -17,16 +17,16 @@ int lkl_printf(const char * fmt, ...)
 	n=vsnprintf(NULL, 0, fmt, args);
 	va_end(copy);
 
-	if (!(buffer=linux_nops->mem_alloc(n+1))) {
+	if (!(buffer=lkl_nops->mem_alloc(n+1))) {
 		va_end(args);
 		return 0;
 	}
 	vsnprintf(buffer, n+1, fmt, args);
 	va_end(args);
 
-	linux_nops->print(buffer, n);
+	lkl_nops->print(buffer, n);
 
-	linux_nops->mem_free(buffer);
+	lkl_nops->mem_free(buffer);
 
 	return n;
 }

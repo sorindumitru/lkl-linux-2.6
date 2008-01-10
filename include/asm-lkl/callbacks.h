@@ -3,7 +3,7 @@
 
 #include "irq.h"
 
-struct linux_native_operations {
+struct lkl_native_operations {
 	/*
 	 * All printks go out through this callback.
 	 */
@@ -74,7 +74,7 @@ struct linux_native_operations {
 	void (*halt)(void);
 };
 
-extern struct linux_native_operations *linux_nops;
+extern struct lkl_native_operations *lkl_nops;
 
 /*
  * Signal an interrupt. Can be called at any time, including early boot time. 
@@ -98,7 +98,7 @@ void lkl_purge_irq_queue(int irq);
  * Register the native operations and start the kernel. The function returns
  * only after the kernel shutdowns. 
  */
-int linux_start_kernel(struct linux_native_operations *lnops, const char *cmd_line, ...);
+int lkl_start_kernel(struct lkl_native_operations *lkl_nops, const char *cmd_line, ...);
 
 
 #endif

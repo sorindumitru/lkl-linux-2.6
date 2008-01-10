@@ -28,6 +28,12 @@ core-y += $(arch_dir)/kernel/
 libs-y  += $(arch_dir)/lib/
 drivers-y += $(arch_dir)/drivers/
 
-env.a: 
-	$(Q)$(MAKE) $(build)=$(arch_dir)/envs/ env.a
+lkl.a: vmlinux
+	$(MAKE) $(build)=$(arch_dir)/envs/ lkl.a
+	$(OBJCOPY) -w -G_lkl* -Glkl* vmlinux
+	$(AR) -q $@ $^
+
+
+
+
 

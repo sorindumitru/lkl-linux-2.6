@@ -7,7 +7,7 @@
 
 static void console_write(struct console *con, const char *str, unsigned len)
 {
-	linux_nops->print(str, len);
+	lkl_nops->print(str, len);
 }
 
 static struct console stdio_console = {

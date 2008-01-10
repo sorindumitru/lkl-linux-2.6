@@ -14,7 +14,7 @@
 
 #include <asm/callbacks.h>
 
-struct linux_native_operations *linux_nops;
+struct lkl_native_operations *lkl_nops;
 
 static struct fs_struct init_fs = INIT_FS;
 static struct files_struct init_files = INIT_FILES;
@@ -84,7 +84,7 @@ static char cmd_line[128];
 void __init setup_arch(char **cl)
 {
         *cl=cmd_line;
-        panic_blink=linux_nops->panic_blink;
+        panic_blink=lkl_nops->panic_blink;
 	threads_init();
 
         mem_init_0();
@@ -112,7 +112,7 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 		 */
 		synchronize_rcu();
 
-		if (!linux_nops->init || (init_err=linux_nops->init()) == 0)
+		if (!lkl_nops->init || (init_err=lkl_nops->init()) == 0)
 			run_syscalls();
 
 		kernel_halt();
@@ -132,11 +132,11 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 
 extern void *halt_syscall_sem;
 
-int linux_start_kernel(struct linux_native_operations *nops, const char *fmt, ...)
+int lkl_start_kernel(struct lkl_native_operations *nops, const char *fmt, ...)
 {
 	va_list ap;
 
-	linux_nops=nops;
+	lkl_nops=nops;
 
 	va_start(ap, fmt);
 	vsnprintf(cmd_line, sizeof(cmd_line), fmt, ap);
@@ -151,13 +151,13 @@ int linux_start_kernel(struct linux_native_operations *nops, const char *fmt, ..
 	/*
 	 * Stop the timer.
 	 */
-	linux_nops->timer(0);
+	lkl_nops->timer(0);
 
 	/*
 	 * We are almost dead, announce application.
 	 */
-	if (linux_nops->halt)
-		linux_nops->halt();
+	if (lkl_nops->halt)
+		lkl_nops->halt();
 
 	mem_cleanup();
 
@@ -165,7 +165,7 @@ int linux_start_kernel(struct linux_native_operations *nops, const char *fmt, ..
 	 * Finish the halt system call, if any. 
 	 */
 	if (halt_syscall_sem)
-		linux_nops->sem_up(halt_syscall_sem);
+		lkl_nops->sem_up(halt_syscall_sem);
 
 	return init_err;
 }

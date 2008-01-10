@@ -48,12 +48,12 @@ static int reload_rx_ring_entry(struct net_device *netdev,
 	rre->led.len=MAX_FRAME_LENGTH;
 	rre->skb=skb;
 
-	linux_nops->sem_down(nd->rx_ring_lock);
+	lkl_nops->sem_down(nd->rx_ring_lock);
 	/* remove it from the inuse list */
 	list_del(&rre->list);
 	/* and put it on the ready list */
 	list_add(&rre->list, &nd->rx_ring_ready);
-	linux_nops->sem_up(nd->rx_ring_lock);
+	lkl_nops->sem_up(nd->rx_ring_lock);
 	
 	return 0;
 }
@@ -64,14 +64,14 @@ struct lkl_eth_desc* lkl_eth_get_rx_desc(void *_netdev)
 	struct netdev_data *nd=(struct netdev_data*)netdev_priv(netdev);
 	struct rx_ring_entry *rre=NULL;
 
-	linux_nops->sem_down(nd->rx_ring_lock);
+	lkl_nops->sem_down(nd->rx_ring_lock);
 	if (!list_empty(&nd->rx_ring_ready)) {
 		rre=list_first_entry(&nd->rx_ring_ready, struct rx_ring_entry, list);
 		list_del(&rre->list);
 		/* don't forget to add it on the inuse list */
 		list_add(&rre->list, &nd->rx_ring_inuse);
 	}
-	linux_nops->sem_up(nd->rx_ring_lock);
+	lkl_nops->sem_up(nd->rx_ring_lock);
 
 	if (rre)
 		return &rre->led;
@@ -118,7 +118,7 @@ static void cleanup_netdev(struct net_device *netdev)
 	}
 
 	if (nd->rx_ring_lock)
-		linux_nops->sem_free(nd->rx_ring_lock);
+		lkl_nops->sem_free(nd->rx_ring_lock);
 
 	kfree(netdev);
 }
@@ -181,7 +181,7 @@ int _lkl_add_eth(const char *native_dev, const char *mac, int rx_ring_len)
 	INIT_LIST_HEAD(&nd->rx_ring_ready);
 	INIT_LIST_HEAD(&nd->rx_ring_inuse);
 
-	if (!(nd->rx_ring_lock=linux_nops->sem_alloc(1))) 
+	if (!(nd->rx_ring_lock=lkl_nops->sem_alloc(1))) 
 		goto error;
 
 	for(i=0; i<rx_ring_len; i++) {

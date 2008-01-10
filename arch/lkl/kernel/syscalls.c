@@ -188,7 +188,7 @@ static inline long do_syscall(struct syscall_req *sr)
 						   sr->params[4],
 						   sr->params[5]);
 	sr->ret=ret;
-	linux_nops->sem_up(sr->sem);
+	lkl_nops->sem_up(sr->sem);
 	return ret;
 }
 
@@ -232,13 +232,13 @@ int __init syscall_init(void)
 	struct syscall_req sr = {	\
 		.syscall = __NR_##_syscall,	\
 		.params = { _params },		\
-		.sem = linux_nops->sem_alloc(0), \
+		.sem = lkl_nops->sem_alloc(0), \
 	};					\
 	if (!sr.sem) \
 		return -ENOMEM; \
 	lkl_trigger_irq_with_data(SYSCALL_IRQ, &sr); \
-	linux_nops->sem_down(sr.sem); \
-	linux_nops->sem_free(sr.sem); \
+	lkl_nops->sem_down(sr.sem); \
+	lkl_nops->sem_free(sr.sem); \
 	return sr.ret; 
 
 
@@ -468,9 +468,9 @@ long lkl_sys_halt(void)
 	struct syscall_req sr = {	
 		.syscall = __NR_reboot,
 	};
-	halt_syscall_sem=sr.sem=linux_nops->sem_alloc(0);
+	halt_syscall_sem=sr.sem=lkl_nops->sem_alloc(0);
 	lkl_trigger_irq_with_data(SYSCALL_IRQ, &sr);
-	linux_nops->sem_down(sr.sem);
+	lkl_nops->sem_down(sr.sem);
 	return sr.ret;
 }     
 

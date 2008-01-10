@@ -24,7 +24,7 @@ void __devinit calibrate_delay(void)
 
 static cycle_t clock_read(void)
 {
-        return linux_nops->time();
+        return lkl_nops->time();
 }
 
 static struct clocksource clocksource = {
@@ -68,7 +68,7 @@ static int clockevent_next_event(unsigned long delta,
         if (delta <= LKL_TIMER_LAST_OP)
 		delta=LKL_TIMER_LAST_OP+1;
                 
-	linux_nops->timer(delta);
+	lkl_nops->timer(delta);
 
         return 0;
 }
@@ -97,7 +97,7 @@ static struct irqaction irq0  = {
 
 void __init time_init(void)
 {
-	BUG_ON(!linux_nops->timer || !linux_nops->time);
+	BUG_ON(!lkl_nops->timer || !lkl_nops->time);
 
 
 	setup_irq(0, &irq0);
@@ -106,7 +106,7 @@ void __init time_init(void)
         
         clockevents_register_device(&clockevent);
 
-	linux_nops->timer(LKL_TIMER_INIT);
+	lkl_nops->timer(LKL_TIMER_INIT);
 
         printk("lkl: timer initialized\n");
 }

@@ -16,24 +16,24 @@ static void *threads_counter_lock;
 
 static inline void threads_counter_inc(void)
 {
-	linux_nops->sem_down(threads_counter_lock);
+	lkl_nops->sem_down(threads_counter_lock);
 	threads_counter++;
-	linux_nops->sem_up(threads_counter_lock);
+	lkl_nops->sem_up(threads_counter_lock);
 }
 	
 static inline void threads_counter_dec(void)
 {
-	linux_nops->sem_down(threads_counter_lock);
+	lkl_nops->sem_down(threads_counter_lock);
 	threads_counter--;
-	linux_nops->sem_up(threads_counter_lock);
+	lkl_nops->sem_up(threads_counter_lock);
 }
 
 static inline int threads_counter_get(void)
 {
 	int counter;
-	linux_nops->sem_down(threads_counter_lock);
+	lkl_nops->sem_down(threads_counter_lock);
 	counter=threads_counter;
-	linux_nops->sem_up(threads_counter_lock);
+	lkl_nops->sem_up(threads_counter_lock);
 
 	return counter;
 }
@@ -44,8 +44,8 @@ void threads_init(void)
 	struct __thread_info *ti=(struct __thread_info*)&init_thread_union.thread_info;
 
 	ti->dead=0;
-	BUG_ON((ti->sched_sem=linux_nops->sem_alloc(0)) == NULL);
-	BUG_ON((threads_counter_lock=linux_nops->sem_alloc(1)) == NULL);
+	BUG_ON((ti->sched_sem=lkl_nops->sem_alloc(0)) == NULL);
+	BUG_ON((threads_counter_lock=lkl_nops->sem_alloc(1)) == NULL);
 }
 
 void threads_cleanup(void)
@@ -55,7 +55,7 @@ void threads_cleanup(void)
 	while (threads_counter_get())
 		schedule_timeout(1);
 
-	linux_nops->sem_free(ti->sched_sem);
+	lkl_nops->sem_free(ti->sched_sem);
 }
 
 struct thread_info* alloc_thread_info(struct task_struct *task)
@@ -66,7 +66,7 @@ struct thread_info* alloc_thread_info(struct task_struct *task)
                 return NULL;
 
         ti->dead=0;
-	if (!(ti->sched_sem=linux_nops->sem_alloc(0))) {
+	if (!(ti->sched_sem=lkl_nops->sem_alloc(0))) {
 		kfree(ti);
 		return NULL;
 	}
@@ -78,7 +78,7 @@ void free_thread_info(struct thread_info *_ti)
 	struct __thread_info *ti = (struct __thread_info*)_ti;
 
 	ti->dead=1;
-        linux_nops->sem_up(ti->sched_sem);
+        lkl_nops->sem_up(ti->sched_sem);
 }
 
 struct thread_info *_current_thread_info=&init_thread_union.thread_info;
@@ -92,14 +92,14 @@ void _switch_to(struct task_struct **prev, struct task_struct *next, struct task
 	_last=last;
 	_current_thread_info=task_thread_info(next);
 
-        linux_nops->sem_up(_next->sched_sem);
-        linux_nops->sem_down(_prev->sched_sem);
+        lkl_nops->sem_up(_next->sched_sem);
+        lkl_nops->sem_down(_prev->sched_sem);
 	if (_prev->dead) {
 		void *thread=_prev->thread;
-		linux_nops->sem_free(_prev->sched_sem);
+		lkl_nops->sem_free(_prev->sched_sem);
 		kfree(_prev);
 		threads_counter_dec();
-		linux_nops->thread_exit(thread);
+		lkl_nops->thread_exit(thread);
 	}
 
 	*prev=_last;
@@ -121,7 +121,7 @@ static void thread_bootstrap(void *_tba)
 	void *arg=tba->arg;
 	
 	kfree(tba);
-        linux_nops->sem_down(ti->sched_sem);
+        lkl_nops->sem_down(ti->sched_sem);
 	BUG_ON(ti->dead);
 	schedule_tail(_last);
 
@@ -139,7 +139,7 @@ int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,
 	tba->arg=(void*)unused;
 	tba->ti=ti;
 
-        ti->thread=linux_nops->thread_create(thread_bootstrap, tba);
+        ti->thread=lkl_nops->thread_create(thread_bootstrap, tba);
 
 	if (ti->thread == NULL) {
 		kfree(tba);

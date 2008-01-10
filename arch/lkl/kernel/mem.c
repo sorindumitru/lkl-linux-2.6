@@ -34,8 +34,8 @@ void __init mem_init_0(void)
 	init_mm.brk = (unsigned long) 0;
 #endif
 
-	phys_mem_size=linux_nops->phys_mem_size;
-        _phys_mem=phys_mem=(unsigned long)linux_nops->mem_alloc(phys_mem_size);
+	phys_mem_size=lkl_nops->phys_mem_size;
+        _phys_mem=phys_mem=(unsigned long)lkl_nops->mem_alloc(phys_mem_size);
         BUG_ON(!phys_mem);
 	memory_end=phys_mem+phys_mem_size;
 
@@ -104,5 +104,5 @@ void __init mem_init(void)
 
 void mem_cleanup(void)
 {
-	linux_nops->mem_free((void*)_phys_mem);
+	lkl_nops->mem_free((void*)_phys_mem);
 }
