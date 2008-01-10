@@ -8,92 +8,151 @@
 #include <errno.h>
 #include <unistd.h>
 #include <malloc.h>
+#include <poll.h>
+#include <net/if.h>
 
+#include <asm-lkl/env.h>
 #include <asm-lkl/eth.h>
 #include <asm-lkl/callbacks.h>
 
-static int sock;
+struct handle {
+	pthread_t thread;
+	int ifindex, sock;
+	int pod[2]; /* pipe of death */
+	void *netdev;
+};
 
-static void free_rx_desc(void *_rxd)
+static void* rx_thread(void *handle)
 {
-	struct lkl_eth_rx_desc *rxd=(struct lkl_eth_rx_desc*)_rxd;
+	struct handle *h=(struct handle*)handle;
+	struct lkl_eth_desc *led=NULL;
+	struct pollfd pfd[] = {
+		{ .fd = h->sock, .events = POLLIN, .revents = 0 },
+		{ .fd = h->pod[0], .events = POLLIN, .revents = 0 }
+	};
 
-	free(rxd->data);
-	free(rxd);
-}
-
-static void* rx_thread(void *netdev)
-{
-	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
-	char data[1518];
-	int len;
+	lkl_printf("lkl eth: starting rx thread\n");
 
 	while (1) {
-		len=recv(sock, data, sizeof(data), 0);
-		if (len > 0) {
-			struct lkl_eth_rx_desc *rxd;
+		int len;
 
-			if (!(rxd=malloc(sizeof(*rxd))))
-				continue;
+		poll(pfd, 2, -1);
 
-			if (!(rxd->data=malloc(len))) {
-				free(rxd);
+		if (pfd[1].revents)
+			break;
+
+
+		if (!led) {
+			led=lkl_eth_get_rx_desc(h->netdev);
+			if (!led) {
+				lkl_printf("lkl eth: failed to get descriptor\n");
+				/* drop the packet */
+				recv(h->sock, NULL, 0, 0);
 				continue;
 			}
-
-			memcpy(rxd->data, data, len);
-			rxd->len=len;
-			rxd->netdev=netdev;
-			rxd->free=free_rx_desc;
-
-			linux_trigger_irq_with_data(ETH_IRQ, rxd);
 		}
+
+		len=recv(h->sock, led->data, led->len, 0);
+
+		if (len > 0) {
+			led->len=len; 
+			lkl_trigger_irq_with_data(ETH_IRQ, led);
+			led=NULL;
+		} else 
+			lkl_printf("lkl eth: failed to receive: %s\n", strerror(errno));
 	}
+
+	lkl_printf("lkl eth: stopping rx thread\n");
+
+	return NULL;
 }
 
-int lkl_eth_rx_init(void *netdev, int ifindex)
+void* lkl_eth_native_init(void *netdev, const char *native_dev)
 {
 	struct sockaddr_ll saddr = {
 		.sll_family = AF_PACKET,
-		.sll_ifindex = ifindex,
+		.sll_ifindex = 	if_nametoindex(native_dev),
 		.sll_protocol = htons(ETH_P_ALL)
 	};
-	pthread_t rxt;
+	struct handle *h;
 
+	if (!(h=malloc(sizeof(*h)))) {
+		lkl_printf("lkl eth: failed to allocate memory\n");
+		goto out;
+	}
 
-	sock = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+	h->netdev=netdev;
 
-        if (sock < 0) {
-                printf("failed to create socket: %s\n", strerror(errno));
-                return -1;
+	if (!(h->ifindex=saddr.sll_ifindex)) {
+		lkl_printf("lkl eth: bad interface %s\n", native_dev);
+		goto out_free_h;
+	}
+
+	h->sock = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+        if (h->sock < 0) {
+                lkl_printf("lkl eth: failed to create socket: %s\n", strerror(errno));
+		goto out_free_h;
         }
 
-        if (bind(sock, (const struct sockaddr*)&saddr, sizeof(saddr)) < 0) {
-                printf("failed to bind socket: %s\n", strerror(errno));
-		close(sock);
-                return -1;
+        if (bind(h->sock, (const struct sockaddr*)&saddr, sizeof(saddr)) < 0) {
+                lkl_printf("lkl eth: failed to bind socket: %s\n", strerror(errno));
+		goto out_close_sock;
         }
 
-	pthread_create(&rxt, NULL, rx_thread, netdev);
+	if (pipe(h->pod) < 0) {
+                lkl_printf("lkl eth: pipe() failed: %s\n", strerror(errno));
+		goto out_close_sock;
+	}
+
+	if (pthread_create(&h->thread, NULL, rx_thread, h) < 0) {
+		lkl_printf("lkl eth: failed to create thread\n");
+		goto out_close_pod;
+	}
+
+	return h;
+
+out_close_pod:
+	close(h->pod[0]); close(h->pod[1]);
+out_close_sock:
+	close(h->sock);
+out_free_h:
+	free(h);
+out:
+	return NULL;
 
 	return 0;
 }
 
-
-int lkl_eth_xmit(int ifindex, const char *data, int len)
+void lkl_eth_native_cleanup(void *handle)
 {
+	struct handle *h=(struct handle*)handle;
+	char c;
+
+	write(h->pod[1], &c, 1);
+
+	pthread_join(h->thread, NULL);
+
+	close(h->pod[0]); close(h->pod[1]);
+
+	free(h);
+}
+
+int lkl_eth_native_xmit(void *handle, const char *data, int len)
+{
+	struct handle *h=(struct handle*)handle;
 	struct sockaddr_ll saddr = {
 		.sll_family = AF_PACKET,
 		.sll_halen = 6,
-		.sll_ifindex = ifindex,
+		.sll_ifindex = h->ifindex,
 	};
 	int err;
 
 	memcpy(saddr.sll_addr, data, saddr.sll_halen);
-	err=sendto(sock, data, len, 0, (const struct sockaddr*)&saddr, sizeof(saddr));
+	err=sendto(h->sock, data, len, 0, (const struct sockaddr*)&saddr, sizeof(saddr));
 	if (err >= 0) 
 		return 0;
-	printf("xmit err=%s\n", strerror(errno));
+
+	lkl_printf("lkl eth: failed to send: %s\n", strerror(errno));
 	return err;
 }
 

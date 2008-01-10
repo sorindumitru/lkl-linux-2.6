@@ -15,8 +15,10 @@ ENV=$(strip $(_ENV))
 DRV=$(if $(CONFIG_LKL_DRV_DISK),disk) $(if $(CONFIG_LKL_DRV_ETH),eth) 
 DRV_OBJS=$(patsubst %,$(obj)/drivers/$(ENV)/%.o,$(DRV))
 
+LIB=$(shell ls $(srctree)/$(src)/lib/*.c)
+LIB_OBJS=$(patsubst $(srctree)/$(src)/lib/%.c,$(obj)/lib/%.o,$(LIB))
 
-env.a: $(patsubst %,$(obj)/%.o,$(ENV)) $(DRV_OBJS) $(obj)/lib/*.o
+env.a: $(patsubst %,$(obj)/%.o,$(ENV)) $(DRV_OBJS) $(LIB_OBJS)
 	$(CROSS_COMPILE)ar -rc $@ $^
 	$(CROSS_COMPILE)ranlib $@
 

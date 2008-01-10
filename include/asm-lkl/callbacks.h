@@ -79,17 +79,20 @@ extern struct linux_native_operations *linux_nops;
 /*
  * Signal an interrupt. Can be called at any time, including early boot time. 
  */
-void linux_trigger_irq(int irq);
+void lkl_trigger_irq(int irq);
 
 
 /*
  * Signal an interrupt with data to be passed in irq_data of the pt_regs
  * structure. (see get_irq_regs). For device driver convenience. Can't be called
- * at during early boot time, before the SLAB is initialized.
+ * during early boot time, before the SLAB is initialized.
  */
-int linux_trigger_irq_with_data(int irq, void *data);
+int lkl_trigger_irq_with_data(int irq, void *data);
 
-
+/*
+ * Clears all pending irqs.
+ */
+void lkl_purge_irq_queue(int irq);
 
 /*
  * Register the native operations and start the kernel. The function returns

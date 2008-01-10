@@ -4,6 +4,8 @@
 #include <asm/errno.h>
 #include <linux/fs.h>
 
+#include <asm/env.h>
+
 extern int get_filesystem_list(char * buf);
 
 static void get_fs_names(char *page)

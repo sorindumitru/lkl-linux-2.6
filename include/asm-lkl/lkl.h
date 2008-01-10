@@ -5,7 +5,6 @@
 
 #include <linux/posix_types.h>
 #include <asm/types.h>
-#include <asm/poll.h>
 #include <asm/stat.h>
 
 /* horible hack, but i'll have it over hacks in apps */
@@ -22,6 +21,7 @@
 #include <linux/fcntl.h>
 
 struct sockaddr;
+struct pollfd;
 
 /* 
  * FIXME: these structs are duplicated from within the kernel. Find a way

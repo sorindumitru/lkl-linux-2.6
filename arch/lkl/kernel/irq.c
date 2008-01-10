@@ -55,7 +55,7 @@ static struct irq_info {
 
 static void *sem;
 
-void linux_trigger_irq(int irq)
+void lkl_trigger_irq(int irq)
 {
 	BUG_ON(irq >= NR_IRQS);
 
@@ -66,18 +66,18 @@ void linux_trigger_irq(int irq)
 	linux_nops->sem_up(sem);
 }
 
-int linux_trigger_irq_with_data(int irq, void *data)
+int lkl_trigger_irq_with_data(int irq, void *data)
 {
-	struct irq_data *is;
+	struct irq_data *id;
 
 	BUG_ON(irq >= NR_IRQS);
 
-	if (!(is=linux_nops->mem_alloc(sizeof(*is))))
+	if (!(id=linux_nops->mem_alloc(sizeof(*id))))
 		return -ENOMEM;
 
 	linux_nops->sem_down(irqs[irq].lock);
-	is->regs.irq_data=data;
-	list_add_tail(&is->list, &irqs[irq].data_list);
+	id->regs.irq_data=data;
+	list_add_tail(&id->list, &irqs[irq].data_list);
 	linux_nops->sem_up(irqs[irq].lock);
 
 	linux_nops->sem_up(sem);
@@ -86,24 +86,41 @@ int linux_trigger_irq_with_data(int irq, void *data)
 }
 
 
+void lkl_purge_irq_queue(int irq)
+{
+	struct list_head *i, *aux;
+
+	BUG_ON(irq >= NR_IRQS);
+
+	linux_nops->sem_down(irqs[irq].lock);
+        irqs[irq].no_data_count=0;
+	list_for_each_safe(i, aux, &irqs[irq].data_list) {
+		struct irq_data *id=list_entry(i, struct irq_data, list);
+		list_del(&id->list);
+		linux_nops->mem_free(id);
+	}
+	linux_nops->sem_up(irqs[irq].lock);
+}
+
+
 static int dequeue_data(int irq, struct pt_regs *regs)
 {
 	struct list_head *i;
-	struct irq_data *is=NULL;
+	struct irq_data *id=NULL;
 
 	linux_nops->sem_down(irqs[irq].lock);
 	list_for_each(i, &irqs[irq].data_list) {
-		is=list_entry(i, struct irq_data, list);
-		list_del(&is->list);
+		id=list_entry(i, struct irq_data, list);
+		list_del(&id->list);
 		break;
 	}
 	linux_nops->sem_up(irqs[irq].lock);
 
-	if (!is)
+	if (!id)
 		return -ENOENT;
 
-	*regs=is->regs;
-	linux_nops->mem_free(is);
+	*regs=id->regs;
+	linux_nops->mem_free(id);
 
 	return 0;
 }

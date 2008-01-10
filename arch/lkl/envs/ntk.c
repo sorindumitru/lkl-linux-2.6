@@ -79,7 +79,7 @@ static void DDKAPI timer_thread(LPVOID arg)
 		KeWaitForSingleObject(&timer, Executive, KernelMode, FALSE, NULL);
 		if (timer_done)
 			return;
-		linux_trigger_irq(TIMER_IRQ);
+		lkl_trigger_irq(TIMER_IRQ);
 	}
 }
 

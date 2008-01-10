@@ -81,7 +81,7 @@ static DWORD WINAPI timer_thread(LPVOID arg)
 		WaitForSingleObject(timer, INFINITE);
 		if (timer_done)
 			return 0;
-		linux_trigger_irq(TIMER_IRQ);
+		lkl_trigger_irq(TIMER_IRQ);
 	}
 }
 

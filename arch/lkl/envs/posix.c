@@ -147,7 +147,7 @@ static void* timer_thread(void *arg)
 			printf("lkl: timer error: %d %s!\n", err, strerror(errno));
 			/* fall through */
 		case 0:
-			linux_trigger_irq(TIMER_IRQ);
+			lkl_trigger_irq(TIMER_IRQ);
 			break;
 		}
 	}

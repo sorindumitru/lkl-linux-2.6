@@ -236,7 +236,7 @@ int __init syscall_init(void)
 	};					\
 	if (!sr.sem) \
 		return -ENOMEM; \
-	linux_trigger_irq_with_data(SYSCALL_IRQ, &sr); \
+	lkl_trigger_irq_with_data(SYSCALL_IRQ, &sr); \
 	linux_nops->sem_down(sr.sem); \
 	linux_nops->sem_free(sr.sem); \
 	return sr.ret; 
@@ -469,7 +469,7 @@ long lkl_sys_halt(void)
 		.syscall = __NR_reboot,
 	};
 	halt_syscall_sem=sr.sem=linux_nops->sem_alloc(0);
-	linux_trigger_irq_with_data(SYSCALL_IRQ, &sr);
+	lkl_trigger_irq_with_data(SYSCALL_IRQ, &sr);
 	linux_nops->sem_down(sr.sem);
 	return sr.ret;
 }     

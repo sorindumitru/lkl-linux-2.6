@@ -172,7 +172,7 @@ static void* APR_THREAD_FUNC timer_thread(apr_thread_t *thr, void *arg)
 				printf("lkl: timer error: %s!\n", 
 				       apr_strerror(status, buffer, sizeof(buffer)));
 			}
-			linux_trigger_irq(TIMER_IRQ);
+			lkl_trigger_irq(TIMER_IRQ);
 			continue;
 		}
 

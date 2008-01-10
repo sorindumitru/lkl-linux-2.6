@@ -26,7 +26,7 @@ static __inline__ __attribute_const__ __u64 ___arch__swab64(__u64 x)
 
 #if defined(LITTLE_ENDIAN)
 #  include <linux/byteorder/little_endian.h>
-#elif  defined(BIT_ENDIAN)
+#elif  defined(BIG_ENDIAN)
 #  include <linux/byteorder/big_endian.h>
 #else
 #error unknown endianess
