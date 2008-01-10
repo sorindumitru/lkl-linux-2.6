@@ -1,4 +1,4 @@
-CFLAGS=-Wall $(LINUXINCLUDE) $(EXTRA_CFLAGS)
+CFLAGS=-Wall $(LINUXINCLUDE) $(EXTRA_CFLAGS) $(LKLENV_CFLAGS)
 
 $(obj)/%.o: $(srctree)/$(src)/%.c
 	mkdir -p `dirname $@`

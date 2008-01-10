@@ -210,7 +210,7 @@ static int init(void)
 }
 
 
-static struct linux_native_operations nops = {
+static struct lkl_native_operations nops = {
 	.panic_blink = panic_blink,
 	.thread_create = thread_create,
 	.thread_exit = thread_exit,
@@ -229,7 +229,7 @@ static struct linux_native_operations nops = {
 
 static void* APR_THREAD_FUNC init_thread(apr_thread_t *thr, void *arg)
 {
-	linux_start_kernel(&nops, "");
+	lkl_start_kernel(&nops, "");
 	apr_thread_exit(thr, 0);
 	return NULL;
 }

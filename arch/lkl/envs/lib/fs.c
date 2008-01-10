@@ -30,7 +30,7 @@ static void get_fs_names(char *page)
 long lkl_mount(char *dev, char *mnt, int flags, void *data)
 {
 	int err;
-	char *p, *fs_names=(char*)linux_nops->mem_alloc(PAGE_SIZE);
+	char *p, *fs_names=(char*)lkl_nops->mem_alloc(PAGE_SIZE);
 	
 	get_fs_names(fs_names);
 retry:
@@ -47,7 +47,7 @@ retry:
 		}
 	}
 out:
-	linux_nops->mem_free(fs_names);
+	lkl_nops->mem_free(fs_names);
 
 	return err;
 }

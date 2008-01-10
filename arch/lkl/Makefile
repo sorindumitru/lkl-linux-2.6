@@ -30,7 +30,7 @@ drivers-y += $(arch_dir)/drivers/
 
 lkl.a: vmlinux
 	$(MAKE) $(build)=$(arch_dir)/envs/ lkl.a
-	$(OBJCOPY) -w -G_lkl* -Glkl* vmlinux
+	$(OBJCOPY) -w -G_lkl* -Glkl* -Gget_filesystem_list vmlinux
 	$(AR) -q $@ $^
 
 

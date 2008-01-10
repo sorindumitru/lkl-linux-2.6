@@ -104,7 +104,7 @@ static int init(void)
 	return 0;
 }
 
-static struct linux_native_operations nops = {
+static struct lkl_native_operations nops = {
 	.panic_blink = panic_blink,
 	.thread_create = thread_create,
 	.thread_exit = thread_exit,
@@ -123,7 +123,7 @@ static struct linux_native_operations nops = {
 
 static DWORD WINAPI init_thread(LPVOID arg)
 {
-	linux_start_kernel(&nops, "");
+	lkl_start_kernel(&nops, "");
 	return 0;
 }
 
