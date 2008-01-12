@@ -10,47 +10,12 @@ static inline __sum16 csum_fold(__wsum csum)
 	return (__force __sum16)~sum;
 }
 
-
-/*
- *	This is a version of ip_compute_csum() optimized for IP headers,
- *	which always checksum on 4 octet boundaries.
- *
- *	By Jorge Cwik <jorge@laser.satlink.net>, adapted for linux by
- *	Arnt Gulbrandsen.
- */
-static inline __sum16 ip_fast_csum(const void *iph, unsigned int ihl)
-{
-	const unsigned int *word = iph;
-	const unsigned int *stop = word + ihl;
-	unsigned int csum;
-	int carry;
-
-	csum = word[0];
-	csum += word[1];
-	carry = (csum < word[1]);
-	csum += carry;
-
-	csum += word[2];
-	carry = (csum < word[2]);
-	csum += carry;
-
-	csum += word[3];
-	carry = (csum < word[3]);
-	csum += carry;
-
-	word += 4;
-	do {
-		csum += *word;
-		carry = (csum < *word);
-		csum += carry;
-		word++;
-	} while (word != stop);
-
-	return csum_fold(csum);
-}
-
 __wsum csum_partial(const void *buff, int len, __wsum sum);
 
+static inline __sum16 ip_fast_csum(const void *iph, unsigned int ihl)
+{
+	return csum_fold(csum_partial(iph, ihl*4, 0));
+}
 
 /*
  * the same as csum_partial, but copies from src while it
@@ -100,18 +65,11 @@ __wsum csum_tcpudp_nofold(__be32 saddr, __be32 daddr,
 				   unsigned short proto,
 				   __wsum sum)
 {
-	u64 result;
-
-	result = (__force u64)saddr + (__force u64)daddr +
-		 (__force u64)sum + ((len + proto) << 8);
-
-	/* Fold down to 32-bits so we don't lose in the typedef-less 
-	   network stack.  */
-	/* 64 to 33 */
-	result = (result & 0xffffffff) + (result >> 32);
-	/* 33 to 32 */
-	result = (result & 0xffffffff) + (result >> 32);
-	return (__force __wsum)result;
+	u16 pseudo_header[] = { saddr >> 16, saddr & 0xffff, 
+				daddr >> 16, daddr & 0xffff, 
+				htons(proto & 0xff), htons(len) };
+				
+	return csum_partial(pseudo_header, sizeof(pseudo_header), sum);
 }
 
 
