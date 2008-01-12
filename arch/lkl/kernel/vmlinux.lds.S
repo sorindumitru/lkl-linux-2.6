@@ -1,11 +1,17 @@
 #include <asm/vmlinux.lds.h>
 #include <asm/target.h>
 #include <asm/thread_info.h>
-        
+
 OUTPUT_FORMAT(TARGET_FORMAT)
 OUTPUT_ARCH(TARGET_ARCH)
 ENTRY(start_kernel)
-VMLINUX_SYMBOL(jiffies) = VMLINUX_SYMBOL(jiffies_64);
+
+#if (BITS_PER_LONG == 32) && defined(BIG_ENDIAN)
+#define JIFFIES_OFFSET 4
+#else
+#define JIFFIES_OFFSET 0
+#endif
+
 
 SECTIONS
 {
@@ -144,6 +150,11 @@ SECTIONS
         . = ALIGN(4096);
         .data    :
         {
+		/* 
+		 * This has to be here, otherwise ld puts jiffies in *ABS*.
+		 */
+		VMLINUX_SYMBOL(jiffies) = VMLINUX_SYMBOL(jiffies_64) + JIFFIES_OFFSET;
+
                 DATA_DATA
                 *(.init.data);	
                 CONSTRUCTORS
