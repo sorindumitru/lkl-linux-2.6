@@ -14,7 +14,7 @@ int lkl_printf(const char * fmt, ...)
 
 	va_start(args, fmt);
 	va_copy(copy, args);
-	n=vsnprintf(NULL, 0, fmt, args);
+	n=vsnprintf(NULL, 0, fmt, copy);
 	va_end(copy);
 
 	if (!(buffer=lkl_nops->mem_alloc(n+1))) {
