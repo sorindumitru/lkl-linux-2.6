@@ -1,2 +1,2 @@
 
-lib-y = checksum.o
+lib-y = checksum.o string.o 
