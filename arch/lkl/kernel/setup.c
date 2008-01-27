@@ -90,7 +90,7 @@ void __init setup_arch(char **cl)
         mem_init_0();
 }
 
-extern int run_syscalls(void);
+extern int run_syscalls(void*);
 
 static int init_err;
 
@@ -106,14 +106,14 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
         if (strcmp(filename, "/init") == 0) {
 		/* 
 		 * Run any pending irqs, softirqs and rcus. We do this
-		 * here so that we:
+		 * here to:
 		 * - cleanup the khelper zombies
 		 * - install the clock source (and switch to NO_HZ mode)
 		 */
 		synchronize_rcu();
 
 		if (!lkl_nops->init || (init_err=lkl_nops->init()) == 0)
-			run_syscalls();
+			run_syscalls(NULL);
 
 		kernel_halt();
 
@@ -130,7 +130,7 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 	return -1;
 }
 
-extern void *halt_syscall_sem;
+extern void *halt_sem;
 
 int lkl_start_kernel(struct lkl_native_operations *nops, const char *fmt, ...)
 {
@@ -164,8 +164,8 @@ int lkl_start_kernel(struct lkl_native_operations *nops, const char *fmt, ...)
 	/* 
 	 * Finish the halt system call, if any. 
 	 */
-	if (halt_syscall_sem)
-		lkl_nops->sem_up(halt_syscall_sem);
+	if (halt_sem)
+		lkl_nops->sem_up(halt_sem);
 
 	return init_err;
 }

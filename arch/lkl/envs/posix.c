@@ -90,6 +90,11 @@ static void thread_exit(void *thread)
 	pthread_exit(NULL);
 }
 
+static void* thread_id(void)
+{
+	return (void*)pthread_self();
+}
+
 static unsigned long long time_ns(void)
 {
         struct timeval tv;
@@ -174,6 +179,7 @@ static struct lkl_native_operations nops = {
 	.panic_blink = panic_blink,
 	.thread_create = thread_create,
 	.thread_exit = thread_exit,
+	.thread_id = thread_id,
 	.sem_alloc = sem_alloc,
 	.sem_free = sem_free,
 	.sem_up = sem_up,

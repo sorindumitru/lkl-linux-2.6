@@ -155,7 +155,7 @@ void show_stack(struct task_struct *task, unsigned long *esp)
 {
 }
 
-int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags)
+asmlinkage int kernel_thread(int (*fn)(void *), void * arg, unsigned long flags)
 {
 	return do_fork(flags | CLONE_VM | CLONE_UNTRACED, (unsigned long)fn, NULL, (unsigned long)arg, NULL, NULL);
 }

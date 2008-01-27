@@ -34,6 +34,8 @@ struct lkl_native_operations {
 	 */
 	void (*thread_exit)(void *thread);
 
+	void* (*thread_id)(void);
+
 	/*
 	 * Memory operations.
 	 */
@@ -99,6 +101,5 @@ void lkl_purge_irq_queue(int irq);
  * only after the kernel shutdowns. 
  */
 int lkl_start_kernel(struct lkl_native_operations *lkl_nops, const char *cmd_line, ...);
-
 
 #endif

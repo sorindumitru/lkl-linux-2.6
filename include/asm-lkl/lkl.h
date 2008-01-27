@@ -115,6 +115,19 @@ int sscanf(const char *, const char *,
 extern char * strchr(const char *,int);
 extern __kernel_size_t strlen(const char *);
 
+/*
+ * All subsequent system calls from the current native thread will be executed
+ * in a newly created Linux system call thread. System calls are still
+ * serialized during execution, but this allows running other system calls while
+ * one is blocked, if the application is multithreaded.
+ */
+int lkl_syscall_thread_init(void);
 
+/*
+ * After this point, all system calls issued by this thread will be executed by
+ * the default Linux system call thread, as before calling
+ * lkl_syscall_thread_init().
+ */
+int lkl_syscall_thread_cleanup(void);
 
 #endif

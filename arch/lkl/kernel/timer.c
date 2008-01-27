@@ -1,6 +1,5 @@
 #include <linux/clocksource.h>
 #include <linux/clockchips.h>
-#include <linux/spinlock.h>
 #include <linux/jiffies.h>
 #include <linux/sysdev.h>
 #include <linux/module.h>

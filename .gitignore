@@ -46,4 +46,6 @@ series
 # cscope files
 cscope.*
 
+#emacs stuff
 *~
+*#
