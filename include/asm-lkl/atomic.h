@@ -3,20 +3,23 @@
 
 #include <asm/system.h>
 
-typedef struct { int counter; } atomic_t;
+typedef long atomic_t;
 
-#define ATOMIC_INIT(i) { (i) }
+#define ATOMIC_INIT(i) (i)
 
-#define atomic_read(v) ((v)->counter)
-#define atomic_set(v,i) ((v)->counter=(i))
-
-static __inline__ void atomic_add(int i, atomic_t *v)
+static __inline__ long atomic_read(const atomic_t *v)
 {
-	long flags;
-	
-	local_irq_save(flags);
-	v->counter+=i;
-	local_irq_restore(flags);
+	return  *v;
+}
+
+static __inline__ void atomic_set(atomic_t *v, long l)
+{
+	*v=l;
+}
+
+static __inline__ void atomic_add(long l, atomic_t *v)
+{
+	*v+=l;
 }
 
 static __inline__ void atomic_inc(atomic_t *v)
@@ -24,9 +27,9 @@ static __inline__ void atomic_inc(atomic_t *v)
 	return atomic_add(1, v);
 }
 
-static __inline__ void atomic_sub(int i, atomic_t *v)
+static __inline__ void atomic_sub(long l, atomic_t *v)
 {
-	return atomic_add(-i, v);
+	return atomic_add(-l, v);
 }
 
 static __inline__ void atomic_dec(atomic_t *v)
@@ -34,89 +37,77 @@ static __inline__ void atomic_dec(atomic_t *v)
 	return atomic_add(-1, v);
 }
 
-static __inline__ int atomic_add_and_test(int i, atomic_t *v)
+static __inline__ long atomic_add_and_test(long l, atomic_t *v)
 {
-	long flags;
-	int ret;
+	long ret;
 	
-	local_irq_save(flags);
-	v->counter+=i;
-	ret=(v->counter == 0);
-	local_irq_restore(flags);
+	*v+=l;
+	ret=(*v == 0);
 	
 	return ret;
 }
 
-static __inline__ int atomic_sub_and_test(int i, atomic_t *v)
+static __inline__ long atomic_sub_and_test(long l, atomic_t *v)
 {
-	return atomic_add_and_test(-i, v);
+	return atomic_add_and_test(-l, v);
 }
 
-static __inline__ int atomic_dec_and_test(atomic_t *v)
+static __inline__ long atomic_dec_and_test(atomic_t *v)
 {
 	return atomic_add_and_test(-1, v);
 }
 
-static __inline__ int atomic_inc_and_test(atomic_t *v)
+static __inline__ long atomic_inc_and_test(atomic_t *v)
 {
 	return atomic_add_and_test(1, v);
 }
 
-static __inline__ int atomic_add_negative(int i, atomic_t *v)
+static __inline__ long atomic_add_negative(long l, atomic_t *v)
 {
-	long flags;
-	int ret;
+	long ret;
 	
-	local_irq_save(flags);
-	v->counter+=i;
-	ret=(v->counter < 0);
-	local_irq_restore(flags);
+	*v+=l;
+	ret=(*v < 0);
 	
 	return ret;
 }
 
-static __inline__ int atomic_add_return(int i, atomic_t *v)
+static __inline__ long atomic_add_return(long l, atomic_t *v)
 {
-	long flags;
-	int ret;
+	long ret;
 	
-	local_irq_save(flags);
-	v->counter+=i;
-	ret=v->counter;
-	local_irq_restore(flags);
+	*v+=l;
+	ret=*v;
 	
 	return ret;
 }
 
-static __inline__ int atomic_sub_return(int i, atomic_t *v)
+static __inline__ long atomic_sub_return(long l, atomic_t *v)
 {
-	return atomic_add_return(-i,v);
+	return atomic_add_return(-l,v);
 }
 
-static __inline__ int atomic_inc_return(atomic_t *v)
+static __inline__ long atomic_inc_return(atomic_t *v)
 {
 	return atomic_add_return(1,v);
 }
 
-static __inline__ int atomic_dec_return(atomic_t *v)
+static __inline__ long atomic_dec_return(atomic_t *v)
 {
 	return atomic_add_return(-1,v);
 }
 
-static inline int atomic_sub_if_positive(int i, atomic_t *v)
+static inline long atomic_sub_if_positive(long l, atomic_t *v)
 {
-	long flags;
-	int ret;
+	long ret;
 	
-	local_irq_save(flags);
-	ret=v->counter - i;
-	if (v->counter >= i)
-	    v->counter -= i;
-	local_irq_restore(flags);
+	ret=*v - l;
+	if (*v >= l)
+	    *v -= l;
 	return ret;
 }
 
-static __inline__ int atomic_dec_if_positive(atomic_t *v)
+static __inline__ long atomic_dec_if_positive(atomic_t *v)
 {
 	return atomic_sub_if_positive(1, v);
 }
@@ -130,21 +121,18 @@ static __inline__ int atomic_dec_if_positive(atomic_t *v)
  * Atomically adds @a to @v, so long as it was not @u.
  * Returns non-zero if @v was not @u, and zero otherwise.
  */
-static __inline__ int atomic_add_unless(atomic_t *v, int a, int u)
+static __inline__ long atomic_add_unless(atomic_t *v, long a, long u)
 {
-	long flags;
-	int ret=1;
+	long ret=1;
 	
-	local_irq_save(flags);
-        if (v->counter != u) 
-                v->counter+=a;
+        if (*v != u) 
+                *v+=a;
         else
                 ret=0;
-	local_irq_restore(flags);
 	return ret;
 }
 
-static __inline__ int atomic_inc_not_zero(atomic_t *v)
+static __inline__ long atomic_inc_not_zero(atomic_t *v)
 {
         return atomic_add_unless(v, 1, 0);
 }
@@ -152,18 +140,14 @@ static __inline__ int atomic_inc_not_zero(atomic_t *v)
 #define xchg(ptr, v) \
 ({ \
         __typeof__(*(ptr)) ov; \
-        long flags; \
         \
-        local_irq_save(flags); \
         ov=*ptr; \
         *ptr=v; \
-        local_irq_restore(flags); \
         ov; \
 })
 
 
-#define atomic_cmpxchg(v, old, new) ((int)cmpxchg(&((v)->counter), old, new))
-#define atomic_xchg(v, new) (xchg(&((v)->counter), new))
+#define atomic_xchg(v, new) (xchg(v, new))
 
 
 #include <asm-generic/atomic.h>

@@ -43,12 +43,7 @@ static void lkl_disk_request(request_queue_t *q)
 
 	while ((req = elv_next_request(q)) != NULL) {
 		struct lkl_disk_dev *dev = req->rq_disk->private_data;
-		struct lkl_disk_cs *cs;
-
-		if (!(cs=kmalloc(sizeof(*cs), GFP_KERNEL))) {
-			end_request(req, 0);
-			continue;
-		}
+		struct lkl_disk_cs cs;
 
 		if (! blk_fs_request(req)) {
 			printk (KERN_NOTICE "Skip non-fs request\n");
@@ -56,15 +51,14 @@ static void lkl_disk_request(request_queue_t *q)
 			continue;
 		}
 
-		cs->linux_cookie=req;
+		cs.linux_cookie=req;
 		lkl_disk_do_rw(dev->data, req->sector, req->current_nr_sectors,
-			       req->buffer, rq_data_dir(req), cs);
+			       req->buffer, rq_data_dir(req), &cs);
 		/*
 		 * Async is broken.
 		 */
-		BUG_ON (cs->sync == 0);
-		end_request(req, cs->status);
-
+		BUG_ON (cs.sync == 0);
+		end_request(req, cs.status);
 	}
 }
 
