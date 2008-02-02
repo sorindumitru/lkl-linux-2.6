@@ -12,6 +12,257 @@ unsigned long empty_zero_page;
 
 static unsigned long _phys_mem;
 
+#ifdef CONFIG_LKL_SLAB
+
+#include <linux/rbtree.h>
+#include <linux/module.h>
+
+/*
+ * We want user blocks clear of our metadata, so that we can easily catch
+ * under/over flows.
+ */
+struct mem_block_meta {
+	void *block;
+	size_t size;
+	struct rb_node rb_node;
+};
+
+static struct rb_root meta_tree = RB_ROOT;
+
+static inline struct mem_block_meta* mem_block_find_meta(const void *b)
+{
+        struct rb_node *i = meta_tree.rb_node;
+        struct mem_block_meta *mbm;
+
+        while (i)
+        {
+                mbm = rb_entry(i, struct mem_block_meta, rb_node);
+                if (b < mbm->block)
+                        i = i->rb_left;
+                else if (b > mbm->block)
+                        i = i->rb_right;
+                else if (b != mbm->block) 
+                        return NULL;
+                else
+                        return mbm;
+        }
+        return NULL;
+	
+}
+
+static inline void mem_block_insert_meta(struct mem_block_meta *mbm)
+{
+        struct rb_node **p=&meta_tree.rb_node, *parent=NULL;
+        struct mem_block_meta *i;
+
+        while (*p)
+        {
+                parent = *p;
+                i = rb_entry(parent, struct mem_block_meta, rb_node);
+
+                if (mbm->block < i->block)
+                        p = &(*p)->rb_left;
+                else if (mbm->block > i->block)
+                        p = &(*p)->rb_right;
+                else
+                        BUG();
+        }
+        
+        rb_link_node(&mbm->rb_node, parent, p);
+        rb_insert_color(&mbm->rb_node, &meta_tree);
+}
+
+
+static inline struct mem_block_meta* __alloc_mem_block(size_t size)
+{
+	struct mem_block_meta *mbm=lkl_nops->mem_alloc(sizeof(*mbm));
+
+	if (!mbm)
+		return NULL;
+
+	mbm->size=size;
+	if (!(mbm->block=lkl_nops->mem_alloc(size))) {
+		lkl_nops->mem_free(mbm);
+		return NULL;
+	}
+
+	mem_block_insert_meta(mbm);
+
+	return mbm;
+}
+
+static inline void* alloc_mem_block(size_t size)
+{
+	struct mem_block_meta *mbm=__alloc_mem_block(size);
+	if (mbm)
+		return mbm->block;
+	return NULL;
+}
+
+static inline  void free_mem_block(const void *b)
+{
+	struct mem_block_meta *mbm=mem_block_find_meta(b);
+	BUG_ON(mbm == NULL);
+	rb_erase(&mbm->rb_node, &meta_tree);
+	lkl_nops->mem_free(mbm);
+	lkl_nops->mem_free((void*)b);
+}
+
+void *__kmalloc(size_t size, gfp_t gfp)
+{
+	return alloc_mem_block(size);
+}
+EXPORT_SYMBOL(__kmalloc);
+
+void *krealloc(const void *b, size_t new_size, gfp_t flags)
+{
+	struct mem_block_meta *mbm=mem_block_find_meta(b);
+	struct mem_block_meta *nmbm=__alloc_mem_block(new_size);
+
+	BUG_ON(mbm == NULL);
+	if (!nmbm)
+		return NULL;
+	memcpy(nmbm->block, mbm->block, min(nmbm->size, mbm->size));
+	return nmbm->block;
+}
+EXPORT_SYMBOL(krealloc);
+
+void kfree(const void *block)
+{
+	if (!block)
+		return;
+	free_mem_block(block);
+}
+
+EXPORT_SYMBOL(kfree);
+
+size_t ksize(const void *b)
+{
+	struct mem_block_meta *mbm=mem_block_find_meta(b);
+	BUG_ON(mbm == NULL);
+	return mbm->size;
+}
+
+struct kmem_cache {
+	unsigned int size; /*, align; - no align */
+	unsigned long flags;
+	const char *name;
+	void (*ctor)(void *, struct kmem_cache *, unsigned long);
+};
+
+struct kmem_cache *kmem_cache_create(const char *name, size_t size,
+	size_t align, unsigned long flags,
+	void (*ctor)(void*, struct kmem_cache *, unsigned long),
+	void (*dtor)(void*, struct kmem_cache *, unsigned long))
+{
+	struct kmem_cache *c;
+
+	c = alloc_mem_block(sizeof(struct kmem_cache));
+
+	if (c) {
+		c->name = name;
+		c->size = size;
+		c->flags = flags;
+		c->ctor = ctor;
+	} else if (flags & SLAB_PANIC)
+		panic("Cannot create slab cache %s\n", name);
+
+	return c;
+}
+EXPORT_SYMBOL(kmem_cache_create);
+
+void kmem_cache_destroy(struct kmem_cache *c)
+{
+	free_mem_block(c);
+}
+EXPORT_SYMBOL(kmem_cache_destroy);
+
+void *kmem_cache_alloc(struct kmem_cache *c, gfp_t flags)
+{
+	void *b=alloc_mem_block(c->size);
+
+	if (c->ctor)
+		c->ctor(b, c, 0);
+
+	return b;
+}
+EXPORT_SYMBOL(kmem_cache_alloc);
+
+void *kmem_cache_zalloc(struct kmem_cache *c, gfp_t flags)
+{
+	void *ret = kmem_cache_alloc(c, flags);
+	if (ret)
+		memset(ret, 0, c->size);
+
+	return ret;
+}
+EXPORT_SYMBOL(kmem_cache_zalloc);
+
+static void __kmem_cache_free(void *b, int size)
+{
+	free_mem_block(b);
+}
+
+struct mem_block_rcu {
+	struct rcu_head rh;
+	void *block;
+};
+
+static void kmem_rcu_free(struct rcu_head *rc)
+{
+	struct mem_block_rcu *mbr = container_of(rc, struct mem_block_rcu, rh);
+
+	free_mem_block(mbr->block);
+	lkl_nops->mem_free(mbr);
+}
+
+void kmem_cache_free(struct kmem_cache *c, void *b)
+{
+	if (unlikely(c->flags & SLAB_DESTROY_BY_RCU)) {
+		struct mem_block_rcu *mbr=lkl_nops->mem_alloc(sizeof(*mbr));
+		if (!mbr)
+			printk(KERN_ERR "%s: mem_alloc failed!\n", __FUNCTION__);
+		INIT_RCU_HEAD(&mbr->rh);
+		mbr->block=b;
+		call_rcu(&mbr->rh, kmem_rcu_free);
+	} else {
+		__kmem_cache_free(b, c->size);
+	}
+}
+EXPORT_SYMBOL(kmem_cache_free);
+
+unsigned int kmem_cache_size(struct kmem_cache *c)
+{
+	return c->size;
+}
+EXPORT_SYMBOL(kmem_cache_size);
+
+const char *kmem_cache_name(struct kmem_cache *c)
+{
+	return c->name;
+}
+EXPORT_SYMBOL(kmem_cache_name);
+
+int kmem_cache_shrink(struct kmem_cache *d)
+{
+	return 0;
+}
+EXPORT_SYMBOL(kmem_cache_shrink);
+
+int kmem_ptr_validate(struct kmem_cache *a, const void *b)
+{
+	struct mem_block_meta *mbm=mem_block_find_meta(b);
+	if (!mbm)
+		return -EINVAL;
+	return 0;
+}
+
+void __init kmem_cache_init(void)
+{
+}
+
+#endif 
+
 void show_mem(void)
 {
 }

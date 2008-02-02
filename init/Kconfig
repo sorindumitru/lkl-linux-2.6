@@ -585,6 +585,10 @@ config SLOB
 	   susceptible to fragmentation. SLUB can accomplish a higher object
 	   density. It is usually better to use SLUB instead of SLOB.
 
+config LKL_SLAB
+       bool "LKL's SLAB"
+       depends on LKL
+
 endchoice
 
 endmenu		# General setup
