@@ -28,8 +28,6 @@
  *		2 of the License, or (at your option) any later version.
  */
 
-/* Revised by Kenneth Albanowski for m68knommu. Basic problem: unaligned access kills, so most
-   of the assembly has to go. */
 #include <linux/types.h>
 #include <asm/byteorder.h>
 #include <net/checksum.h>
@@ -44,67 +42,6 @@ static inline unsigned short from32to16(unsigned long x)
 	return x;
 }
 
-static unsigned long do_csum(const unsigned char * buff, int len)
-{
-	int odd, count;
-	unsigned long result = 0;
-
-	if (len <= 0)
-		goto out;
-	odd = 1 & (unsigned long) buff;
-	if (odd) {
-		result = *buff;
-		len--;
-		buff++;
-	}
-	count = len >> 1;		/* nr of 16-bit words.. */
-	if (count) {
-		if (2 & (unsigned long) buff) {
-			result += *(unsigned short *) buff;
-			count--;
-			len -= 2;
-			buff += 2;
-		}
-		count >>= 1;		/* nr of 32-bit words.. */
-		if (count) {
-		        unsigned long carry = 0;
-			do {
-				unsigned long w = *(unsigned long *) buff;
-				count--;
-				buff += 4;
-				result += carry;
-				result += w;
-				carry = (w > result);
-			} while (count);
-			result += carry;
-			result = (result & 0xffff) + (result >> 16);
-		}
-		if (len & 2) {
-			result += *(unsigned short *) buff;
-			buff += 2;
-		}
-	}
-	if (len & 1)
-		result += (*buff << 8);
-	result = from32to16(result);
-	if (odd)
-		result = ((result >> 8) & 0xff) | ((result & 0xff) << 8);
-out:
-	return result;
-}
-
-/*
- * this routine is used for miscellaneous IP-like checksums, mainly
- * in icmp.c
- */
-__sum16 ip_compute_csum(const void *buff, int len)
-{
-	return (__force __sum16)~do_csum(buff, len);
-}
-
-EXPORT_SYMBOL(ip_compute_csum);
-
-
 
 /*
  * computes the checksum of a memory block at buff, length len,
@@ -118,15 +55,32 @@ EXPORT_SYMBOL(ip_compute_csum);
  *
  * it's best to have buff aligned on a 32-bit boundary
  */
-__wsum csum_partial(const void *buff, int len, __wsum sum)
+__wsum csum_partial(const void *buff, int len, __wsum _sum)
 {
-	unsigned int result = do_csum(buff, len);
+	int sum=_sum, c=0;
 
-	/* add in old sum, and carry.. */
-	result += (__force u32)sum;
-	if ((__force u32)sum > result)
-		result += 1;
-	return (__force __wsum)result;
+	while (len > 1) {
+		sum+=*(u16*)buff;
+		buff+=2; len-=2;
+	}
+	if (len) {
+		sum+=(*(unsigned char*)buff);
+	}
+
+	return from32to16(sum);
 }
 
 EXPORT_SYMBOL(csum_partial)
+
+
+/*
+ * this routine is used for miscellaneous IP-like checksums, mainly
+ * in icmp.c
+ */
+__sum16 ip_compute_csum(const void *buff, int len)
+{
+	return (__force __sum16)~csum_partial(buff, len, 0);
+}
+
+EXPORT_SYMBOL(ip_compute_csum);
+
