@@ -13,7 +13,10 @@ static inline void arch_pick_mmap_layout(struct mm_struct *mm)
 {
 }
 
-#define TASK_SIZE	(PAGE_OFFSET)
+/*
+ * We don't have strict user/kernel spaces. 
+ */
+#define TASK_SIZE	((unsigned long)-1)
 
 /* This decides where the kernel will search for a free chunk of vm
  * space during mmap's.
