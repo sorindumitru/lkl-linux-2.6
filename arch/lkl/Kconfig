@@ -107,6 +107,11 @@ config LKL
 	bool
 	default y
 
+
+config FRAME_POINTER
+       bool 
+       default y
+
 choice 
        prompt "LKL environment"
        default LKL_ENV_NONE
