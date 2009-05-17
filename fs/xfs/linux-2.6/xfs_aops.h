@@ -21,8 +21,6 @@
 extern struct workqueue_struct *xfsdatad_workqueue;
 extern mempool_t *xfs_ioend_pool;
 
-typedef void (*xfs_ioend_func_t)(void *);
-
 /*
  * xfs_ioend struct manages large extent writes for XFS.
  * It can manage several multi-page bio's at once.
@@ -32,7 +30,7 @@ typedef struct xfs_ioend {
 	unsigned int		io_type;	/* delalloc / unwritten */
 	int			io_error;	/* I/O error code */
 	atomic_t		io_remaining;	/* hold count */
-	struct bhv_vnode	*io_vnode;	/* file being written to */
+	struct inode		*io_inode;	/* file being written to */
 	struct buffer_head	*io_buffer_head;/* buffer linked list head */
 	struct buffer_head	*io_buffer_tail;/* buffer linked list tail */
 	size_t			io_size;	/* size of the extent */
@@ -42,5 +40,8 @@ typedef struct xfs_ioend {
 
 extern const struct address_space_operations xfs_address_space_operations;
 extern int xfs_get_blocks(struct inode *, sector_t, struct buffer_head *, int);
+
+extern void xfs_ioend_init(void);
+extern void xfs_ioend_wait(struct xfs_inode *);
 
 #endif /* __XFS_AOPS_H__ */

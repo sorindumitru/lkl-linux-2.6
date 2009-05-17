@@ -99,9 +99,9 @@ static char *version =
 #include <linux/etherdevice.h>
 #include <linux/skbuff.h>
 #include <linux/delay.h>
+#include <linux/bitops.h>
 
 #include <asm/system.h>
-#include <asm/bitops.h>
 #include <asm/io.h>
 #include <asm/hwtest.h>
 #include <asm/macints.h>
@@ -182,6 +182,9 @@ struct net_device * __init mac89x0_probe(int unit)
 	unsigned short sig;
 	int err = -ENODEV;
 
+	if (!MACH_IS_MAC)
+		return ERR_PTR(-ENODEV);
+
 	dev = alloc_etherdev(sizeof(struct net_local));
 	if (!dev)
 		return ERR_PTR(-ENOMEM);
@@ -190,8 +193,6 @@ struct net_device * __init mac89x0_probe(int unit)
 		sprintf(dev->name, "eth%d", unit);
 		netdev_boot_setup_check(dev);
 	}
-
-	SET_MODULE_OWNER(dev);
 
 	if (once_is_enough)
 		goto out;
@@ -274,13 +275,10 @@ struct net_device * __init mac89x0_probe(int unit)
         }
 
 	dev->irq = SLOT2IRQ(slot);
-	printk(" IRQ %d ADDR ", dev->irq);
 
-	/* print the ethernet address. */
-	for (i = 0; i < ETH_ALEN; i++)
-		printk("%2.2x%s", dev->dev_addr[i],
-		       ((i < ETH_ALEN-1) ? ":" : ""));
-	printk("\n");
+	/* print the IRQ and ethernet address. */
+
+	printk(" IRQ %d ADDR %pM\n", dev->irq, dev->dev_addr);
 
 	dev->open		= net_open;
 	dev->stop		= net_close;
@@ -292,7 +290,7 @@ struct net_device * __init mac89x0_probe(int unit)
 	err = register_netdev(dev);
 	if (err)
 		goto out1;
-	return 0;
+	return NULL;
 out1:
 	nubus_writew(0, dev->base_addr + ADD_PORT);
 out:
@@ -518,7 +516,6 @@ net_rx(struct net_device *dev)
 
         skb->protocol=eth_type_trans(skb,dev);
 	netif_rx(skb);
-	dev->last_rx = jiffies;
 	lp->stats.rx_packets++;
 	lp->stats.rx_bytes += length;
 }
@@ -608,7 +605,7 @@ module_param(debug, int, 0);
 MODULE_PARM_DESC(debug, "CS89[02]0 debug level (0-5)");
 MODULE_LICENSE("GPL");
 
-int
+int __init
 init_module(void)
 {
 	net_debug = debug;
@@ -628,14 +625,3 @@ cleanup_module(void)
 	free_netdev(dev_cs89x0);
 }
 #endif /* MODULE */
-
-/*
- * Local variables:
- *  compile-command: "m68k-linux-gcc -D__KERNEL__ -I../../include -Wall -Wstrict-prototypes -O2 -fomit-frame-pointer -pipe -fno-strength-reduce -ffixed-a2 -DMODULE -DMODVERSIONS -include ../../include/linux/modversions.h   -c -o mac89x0.o mac89x0.c"
- *  version-control: t
- *  kept-new-versions: 5
- *  c-indent-level: 8
- *  tab-width: 8
- * End:
- *
- */

@@ -5,7 +5,6 @@
  *  Modifications by Paul Mackerras (PowerMac) (paulus@cs.anu.edu.au)
  *  and Cort Dougan (PReP) (cort@cs.nmt.edu)
  *    Copyright (C) 1996 Paul Mackerras
- *  Amiga/APUS changes by Jesper Skov (jskov@cygnus.co.uk).
  *  PPC44x/36-bit changes by Matt Porter (mporter@mvista.com)
  *
  *  Derived from "arch/i386/mm/init.c"
@@ -31,26 +30,25 @@
 #include <linux/highmem.h>
 #include <linux/initrd.h>
 #include <linux/pagemap.h>
+#include <linux/lmb.h>
 
 #include <asm/pgalloc.h>
 #include <asm/prom.h>
 #include <asm/io.h>
-#include <asm/mmu_context.h>
 #include <asm/pgtable.h>
 #include <asm/mmu.h>
 #include <asm/smp.h>
 #include <asm/machdep.h>
 #include <asm/btext.h>
 #include <asm/tlb.h>
-#include <asm/prom.h>
-#include <asm/lmb.h>
 #include <asm/sections.h>
+#include <asm/system.h>
 
 #include "mmu_decl.h"
 
 #if defined(CONFIG_KERNEL_START_BOOL) || defined(CONFIG_LOWMEM_SIZE_BOOL)
 /* The ammount of lowmem must be within 0xF0000000 - KERNELBASE. */
-#if (CONFIG_LOWMEM_SIZE > (0xF0000000 - KERNELBASE))
+#if (CONFIG_LOWMEM_SIZE > (0xF0000000 - PAGE_OFFSET))
 #error "You must adjust CONFIG_LOWMEM_SIZE or CONFIG_START_KERNEL"
 #endif
 #endif
@@ -58,11 +56,14 @@
 
 DEFINE_PER_CPU(struct mmu_gather, mmu_gathers);
 
-unsigned long total_memory;
-unsigned long total_lowmem;
+phys_addr_t total_memory;
+phys_addr_t total_lowmem;
 
-unsigned long ppc_memstart;
-unsigned long ppc_memoffset = PAGE_OFFSET;
+phys_addr_t memstart_addr = (phys_addr_t)~0ull;
+EXPORT_SYMBOL(memstart_addr);
+phys_addr_t kernstart_addr;
+EXPORT_SYMBOL(kernstart_addr);
+phys_addr_t lowmem_end_addr;
 
 int boot_mapsize;
 #ifdef CONFIG_PPC_PMAC
@@ -70,20 +71,10 @@ unsigned long agp_special_page;
 EXPORT_SYMBOL(agp_special_page);
 #endif
 
-#ifdef CONFIG_HIGHMEM
-pte_t *kmap_pte;
-pgprot_t kmap_prot;
-
-EXPORT_SYMBOL(kmap_prot);
-EXPORT_SYMBOL(kmap_pte);
-#endif
-
 void MMU_init(void);
 
 /* XXX should be in current.h  -- paulus */
 extern struct task_struct *current_set[NR_CPUS];
-
-extern int init_bootmem_done;
 
 /*
  * this tells the system to map all of ram with the segregs
@@ -97,10 +88,10 @@ int __map_without_ltlbs;
 unsigned long __max_low_memory = MAX_LOW_MEM;
 
 /*
- * limit of what is accessible with initial MMU setup -
+ * address of the limit of what is accessible with initial MMU setup -
  * 256MB usually, but only 16MB on 601.
  */
-unsigned long __initial_memory_limit = 0x10000000;
+phys_addr_t __initial_memory_limit_addr = (phys_addr_t)0x10000000;
 
 /*
  * Check for command-line options that affect what MMU_init will do.
@@ -133,7 +124,10 @@ void __init MMU_init(void)
 
 	/* 601 can only access 16MB at the moment */
 	if (PVR_VER(mfspr(SPRN_PVR)) == 1)
-		__initial_memory_limit = 0x01000000;
+		__initial_memory_limit_addr = 0x01000000;
+	/* 8xx can only access 8MB at the moment */
+	if (PVR_VER(mfspr(SPRN_PVR)) == 0x50)
+		__initial_memory_limit_addr = 0x00800000;
 
 	/* parse args from command line */
 	MMU_setup();
@@ -144,8 +138,8 @@ void __init MMU_init(void)
 		printk(KERN_WARNING "Only using first contiguous memory region");
 	}
 
-	total_memory = lmb_end_of_DRAM();
-	total_lowmem = total_memory;
+	total_lowmem = total_memory = lmb_end_of_DRAM() - memstart_addr;
+	lowmem_end_addr = memstart_addr + total_lowmem;
 
 #ifdef CONFIG_FSL_BOOKE
 	/* Freescale Book-E parts expect lowmem to be mapped by fixed TLB
@@ -156,9 +150,10 @@ void __init MMU_init(void)
 
 	if (total_lowmem > __max_low_memory) {
 		total_lowmem = __max_low_memory;
+		lowmem_end_addr = memstart_addr + total_lowmem;
 #ifndef CONFIG_HIGHMEM
 		total_memory = total_lowmem;
-		lmb_enforce_memory_limit(total_lowmem);
+		lmb_enforce_memory_limit(lowmem_end_addr);
 		lmb_analyze();
 #endif /* CONFIG_HIGHMEM */
 	}
@@ -183,11 +178,6 @@ void __init MMU_init(void)
 	/* Map in I/O resources */
 	if (ppc_md.progress)
 		ppc_md.progress("MMU:setio", 0x302);
-	if (ppc_md.setup_io_mappings)
-		ppc_md.setup_io_mappings();
-
-	/* Initialize the context management stuff */
-	mmu_context_init();
 
 	if (ppc_md.progress)
 		ppc_md.progress("MMU:exit", 0x211);
@@ -207,7 +197,7 @@ void __init *early_get_page(void)
 		p = alloc_bootmem_pages(PAGE_SIZE);
 	} else {
 		p = __va(lmb_alloc_base(PAGE_SIZE, PAGE_SIZE,
-					__initial_memory_limit));
+					__initial_memory_limit_addr));
 	}
 	return p;
 }
@@ -256,4 +246,41 @@ void free_initrd_mem(unsigned long start, unsigned long end)
 		totalram_pages++;
 	}
 }
+#endif
+
+#ifdef CONFIG_PROC_KCORE
+static struct kcore_list kcore_vmem;
+
+static int __init setup_kcore(void)
+{
+	int i;
+
+	for (i = 0; i < lmb.memory.cnt; i++) {
+		unsigned long base;
+		unsigned long size;
+		struct kcore_list *kcore_mem;
+
+		base = lmb.memory.region[i].base;
+		size = lmb.memory.region[i].size;
+
+		kcore_mem = kmalloc(sizeof(struct kcore_list), GFP_ATOMIC);
+		if (!kcore_mem)
+			panic("%s: kmalloc failed\n", __func__);
+
+		/* must stay under 32 bits */
+		if ( 0xfffffffful - (unsigned long)__va(base) < size) {
+			size = 0xfffffffful - (unsigned long)(__va(base));
+			printk(KERN_DEBUG "setup_kcore: restrict size=%lx\n",
+						size);
+		}
+
+		kclist_add(kcore_mem, __va(base), size);
+	}
+
+	kclist_add(&kcore_vmem, (void *)VMALLOC_START,
+		VMALLOC_END-VMALLOC_START);
+
+	return 0;
+}
+module_init(setup_kcore);
 #endif

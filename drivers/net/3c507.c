@@ -118,7 +118,6 @@ enum commands {
 
 /* Information that need to be kept for each board. */
 struct net_local {
-	struct net_device_stats stats;
 	int last_restart;
 	ushort rx_head;
 	ushort rx_tail;
@@ -289,7 +288,6 @@ static int	el16_send_packet(struct sk_buff *skb, struct net_device *dev);
 static irqreturn_t el16_interrupt(int irq, void *dev_id);
 static void el16_rx(struct net_device *dev);
 static int	el16_close(struct net_device *dev);
-static struct net_device_stats *el16_get_stats(struct net_device *dev);
 static void el16_tx_timeout (struct net_device *dev);
 
 static void hardware_send_packet(struct net_device *dev, void *buf, short length, short pad);
@@ -326,8 +324,6 @@ struct net_device * __init el16_probe(int unit)
 		irq = dev->irq;
 		mem_start = dev->mem_start & 15;
 	}
-
-	SET_MODULE_OWNER(dev);
 
 	if (io > 0x1ff) 	/* Check a single specified location. */
 		err = el16_probe1(dev, io);
@@ -406,10 +402,9 @@ static int __init el16_probe1(struct net_device *dev, int ioaddr)
 	dev->base_addr = ioaddr;
 
 	outb(0x01, ioaddr + MISC_CTRL);
-	for (i = 0; i < 6; i++) {
+	for (i = 0; i < 6; i++)
 		dev->dev_addr[i] = inb(ioaddr + i);
-		printk(" %02x", dev->dev_addr[i]);
-	}
+	printk(" %pM", dev->dev_addr);
 
 	if (mem_start)
 		net_debug = mem_start & 7;
@@ -457,7 +452,6 @@ static int __init el16_probe1(struct net_device *dev, int ioaddr)
  	dev->open = el16_open;
  	dev->stop = el16_close;
 	dev->hard_start_xmit = el16_send_packet;
-	dev->get_stats	= el16_get_stats;
 	dev->tx_timeout = el16_tx_timeout;
 	dev->watchdog_timeo = TX_TIMEOUT;
 	dev->ethtool_ops = &netdev_ethtool_ops;
@@ -491,7 +485,7 @@ static void el16_tx_timeout (struct net_device *dev)
 			readw(shmem + iSCB_STATUS) & 0x8000 ? "IRQ conflict" :
 			"network cable problem");
 	/* Try to restart the adaptor. */
-	if (lp->last_restart == lp->stats.tx_packets) {
+	if (lp->last_restart == dev->stats.tx_packets) {
 		if (net_debug > 1)
 			printk ("Resetting board.\n");
 		/* Completely reset the adaptor. */
@@ -503,7 +497,7 @@ static void el16_tx_timeout (struct net_device *dev)
 			printk ("Kicking board.\n");
 		writew(0xf000 | CUC_START | RX_START, shmem + iSCB_CMD);
 		outb (0, ioaddr + SIGNAL_CA);	/* Issue channel-attn. */
-		lp->last_restart = lp->stats.tx_packets;
+		lp->last_restart = dev->stats.tx_packets;
 	}
 	dev->trans_start = jiffies;
 	netif_wake_queue (dev);
@@ -522,7 +516,7 @@ static int el16_send_packet (struct sk_buff *skb, struct net_device *dev)
 
 	spin_lock_irqsave (&lp->lock, flags);
 
-	lp->stats.tx_bytes += length;
+	dev->stats.tx_bytes += length;
 	/* Disable the 82586's input to the interrupt line. */
 	outb (0x80, ioaddr + MISC_CTRL);
 
@@ -581,14 +575,14 @@ static irqreturn_t el16_interrupt(int irq, void *dev_id)
 	  }
 	  /* Tx unsuccessful or some interesting status bit set. */
 	  if (!(tx_status & 0x2000) || (tx_status & 0x0f3f)) {
-		lp->stats.tx_errors++;
-		if (tx_status & 0x0600)  lp->stats.tx_carrier_errors++;
-		if (tx_status & 0x0100)  lp->stats.tx_fifo_errors++;
-		if (!(tx_status & 0x0040))  lp->stats.tx_heartbeat_errors++;
-		if (tx_status & 0x0020)  lp->stats.tx_aborted_errors++;
-		lp->stats.collisions += tx_status & 0xf;
+		dev->stats.tx_errors++;
+		if (tx_status & 0x0600)  dev->stats.tx_carrier_errors++;
+		if (tx_status & 0x0100)  dev->stats.tx_fifo_errors++;
+		if (!(tx_status & 0x0040))  dev->stats.tx_heartbeat_errors++;
+		if (tx_status & 0x0020)  dev->stats.tx_aborted_errors++;
+		dev->stats.collisions += tx_status & 0xf;
 	  }
-	  lp->stats.tx_packets++;
+	  dev->stats.tx_packets++;
 	  if (net_debug > 5)
 		  printk("Reaped %x, Tx status %04x.\n" , lp->tx_reap, tx_status);
 	  lp->tx_reap += TX_BUF_SIZE;
@@ -665,17 +659,6 @@ static int el16_close(struct net_device *dev)
 	/* Update the statistics here. */
 
 	return 0;
-}
-
-/* Get the current statistics.	This may be called with the card open or
-   closed. */
-static struct net_device_stats *el16_get_stats(struct net_device *dev)
-{
-	struct net_local *lp = netdev_priv(dev);
-
-	/* ToDo: decide if there are any useful statistics from the SCB. */
-
-	return &lp->stats;
 }
 
 /* Initialize the Rx-block list. */
@@ -763,7 +746,7 @@ static void init_82586_mem(struct net_device *dev)
 		int boguscnt = 50;
 		while (readw(shmem+iSCB_STATUS) == 0)
 			if (--boguscnt == 0) {
-				printk("%s: i82586 initialization timed out with status %04x,"
+				printk("%s: i82586 initialization timed out with status %04x, "
 					   "cmd %04x.\n", dev->name,
 					   readw(shmem+iSCB_STATUS), readw(shmem+iSCB_CMD));
 				break;
@@ -848,18 +831,19 @@ static void el16_rx(struct net_device *dev)
 
 		if (rfd_cmd != 0 || data_buffer_addr != rx_head + 22
 			|| (pkt_len & 0xC000) != 0xC000) {
-			printk("%s: Rx frame at %#x corrupted, status %04x cmd %04x"
-				   "next %04x data-buf @%04x %04x.\n", dev->name, rx_head,
-				   frame_status, rfd_cmd, next_rx_frame, data_buffer_addr,
-				   pkt_len);
+			printk(KERN_ERR "%s: Rx frame at %#x corrupted, "
+			       "status %04x cmd %04x next %04x "
+			       "data-buf @%04x %04x.\n",
+			       dev->name, rx_head, frame_status, rfd_cmd,
+			       next_rx_frame, data_buffer_addr, pkt_len);
 		} else if ((frame_status & 0x2000) == 0) {
 			/* Frame Rxed, but with error. */
-			lp->stats.rx_errors++;
-			if (frame_status & 0x0800) lp->stats.rx_crc_errors++;
-			if (frame_status & 0x0400) lp->stats.rx_frame_errors++;
-			if (frame_status & 0x0200) lp->stats.rx_fifo_errors++;
-			if (frame_status & 0x0100) lp->stats.rx_over_errors++;
-			if (frame_status & 0x0080) lp->stats.rx_length_errors++;
+			dev->stats.rx_errors++;
+			if (frame_status & 0x0800) dev->stats.rx_crc_errors++;
+			if (frame_status & 0x0400) dev->stats.rx_frame_errors++;
+			if (frame_status & 0x0200) dev->stats.rx_fifo_errors++;
+			if (frame_status & 0x0100) dev->stats.rx_over_errors++;
+			if (frame_status & 0x0080) dev->stats.rx_length_errors++;
 		} else {
 			/* Malloc up new buffer. */
 			struct sk_buff *skb;
@@ -867,8 +851,10 @@ static void el16_rx(struct net_device *dev)
 			pkt_len &= 0x3fff;
 			skb = dev_alloc_skb(pkt_len+2);
 			if (skb == NULL) {
-				printk("%s: Memory squeeze, dropping packet.\n", dev->name);
-				lp->stats.rx_dropped++;
+				printk(KERN_ERR "%s: Memory squeeze, "
+				       "dropping packet.\n",
+				       dev->name);
+				dev->stats.rx_dropped++;
 				break;
 			}
 
@@ -879,9 +865,8 @@ static void el16_rx(struct net_device *dev)
 
 			skb->protocol=eth_type_trans(skb,dev);
 			netif_rx(skb);
-			dev->last_rx = jiffies;
-			lp->stats.rx_packets++;
-			lp->stats.rx_bytes += pkt_len;
+			dev->stats.rx_packets++;
+			dev->stats.rx_bytes += pkt_len;
 		}
 
 		/* Clear the status word and set End-of-List on the rx frame. */
@@ -951,14 +936,3 @@ cleanup_module(void)
 }
 #endif /* MODULE */
 MODULE_LICENSE("GPL");
-
-
-/*
- * Local variables:
- *  compile-command: "gcc -D__KERNEL__ -I/usr/src/linux/net/inet -I/usr/src/linux/drivers/net -Wall -Wstrict-prototypes -O6 -m486 -c 3c507.c"
- *  version-control: t
- *  kept-new-versions: 5
- *  tab-width: 4
- *  c-indent-level: 4
- * End:
- */

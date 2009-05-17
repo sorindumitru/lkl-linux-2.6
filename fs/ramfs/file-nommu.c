@@ -30,8 +30,8 @@ static int ramfs_nommu_setattr(struct dentry *, struct iattr *);
 
 const struct address_space_operations ramfs_aops = {
 	.readpage		= simple_readpage,
-	.prepare_write		= simple_prepare_write,
-	.commit_write		= simple_commit_write,
+	.write_begin		= simple_write_begin,
+	.write_end		= simple_write_end,
 	.set_page_dirty		= __set_page_dirty_no_writeback,
 };
 
@@ -43,7 +43,8 @@ const struct file_operations ramfs_file_operations = {
 	.write			= do_sync_write,
 	.aio_write		= generic_file_aio_write,
 	.fsync			= simple_sync_file,
-	.sendfile		= generic_file_sendfile,
+	.splice_read		= generic_file_splice_read,
+	.splice_write		= generic_file_splice_write,
 	.llseek			= generic_file_llseek,
 };
 
@@ -58,7 +59,7 @@ const struct inode_operations ramfs_file_inode_operations = {
  * size 0 on the assumption that it's going to be used for an mmap of shared
  * memory
  */
-static int ramfs_nommu_expand_for_mapping(struct inode *inode, size_t newsize)
+int ramfs_nommu_expand_for_mapping(struct inode *inode, size_t newsize)
 {
 	struct pagevec lru_pvec;
 	unsigned long npages, xpages, loop, limit;
@@ -112,12 +113,15 @@ static int ramfs_nommu_expand_for_mapping(struct inode *inode, size_t newsize)
 			goto add_error;
 
 		if (!pagevec_add(&lru_pvec, page))
-			__pagevec_lru_add(&lru_pvec);
+			__pagevec_lru_add_file(&lru_pvec);
+
+		/* prevent the page from being discarded on memory pressure */
+		SetPageDirty(page);
 
 		unlock_page(page);
 	}
 
-	pagevec_lru_add(&lru_pvec);
+	pagevec_lru_add_file(&lru_pvec);
 	return 0;
 
  fsize_exceeded:
@@ -126,6 +130,7 @@ static int ramfs_nommu_expand_for_mapping(struct inode *inode, size_t newsize)
 	return -EFBIG;
 
  add_error:
+	pagevec_lru_add_file(&lru_pvec);
 	page_cache_release(pages + loop);
 	for (loop++; loop < npages; loop++)
 		__free_page(pages + loop);
@@ -262,11 +267,11 @@ unsigned long ramfs_nommu_get_unmapped_area(struct file *file,
 	ret = -ENOMEM;
 	pages = kzalloc(lpages * sizeof(struct page *), GFP_KERNEL);
 	if (!pages)
-		goto out;
+		goto out_free;
 
 	nr = find_get_pages(inode->i_mapping, pgoff, lpages, pages);
 	if (nr != lpages)
-		goto out; /* leave if some pages were missing */
+		goto out_free_pages; /* leave if some pages were missing */
 
 	/* check the pages for physical adjacency */
 	ptr = pages;
@@ -274,19 +279,18 @@ unsigned long ramfs_nommu_get_unmapped_area(struct file *file,
 	page++;
 	for (loop = lpages; loop > 1; loop--)
 		if (*ptr++ != page++)
-			goto out;
+			goto out_free_pages;
 
 	/* okay - all conditions fulfilled */
 	ret = (unsigned long) page_address(pages[0]);
 
- out:
-	if (pages) {
-		ptr = pages;
-		for (loop = lpages; loop > 0; loop--)
-			put_page(*ptr++);
-		kfree(pages);
-	}
-
+out_free_pages:
+	ptr = pages;
+	for (loop = nr; loop > 0; loop--)
+		put_page(*ptr++);
+out_free:
+	kfree(pages);
+out:
 	return ret;
 }
 
@@ -296,5 +300,10 @@ unsigned long ramfs_nommu_get_unmapped_area(struct file *file,
  */
 int ramfs_nommu_mmap(struct file *file, struct vm_area_struct *vma)
 {
-	return vma->vm_flags & VM_SHARED ? 0 : -ENOSYS;
+	if (!(vma->vm_flags & VM_SHARED))
+		return -ENOSYS;
+
+	file_accessed(file);
+	vma->vm_ops = &generic_file_vm_ops;
+	return 0;
 }

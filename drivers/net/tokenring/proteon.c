@@ -12,7 +12,7 @@
  *	- Proteon 1392, 1392+
  *
  *  Maintainer(s):
- *    AF        Adam Fritzler           mid@auk.cx
+ *    AF        Adam Fritzler
  *    JF	Jochen Friedrich	jochen@scram.de
  *
  *  Modification History:
@@ -126,7 +126,6 @@ static int __init setup_card(struct net_device *dev, struct device *pdev)
 	if (!dev)
 		return -ENOMEM;
 
-	SET_MODULE_OWNER(dev);
 	if (dev->base_addr)	/* probe specific location */
 		err = proteon_probe1(dev, dev->base_addr);
 	else {
@@ -153,11 +152,8 @@ static int __init setup_card(struct net_device *dev, struct device *pdev)
 		
 	proteon_read_eeprom(dev);
 
-	printk(KERN_DEBUG "proteon.c:    Ring Station Address: ");
-	printk("%2.2x", dev->dev_addr[0]);
-	for (j = 1; j < 6; j++)
-		printk(":%2.2x", dev->dev_addr[j]);
-	printk("\n");
+	printk(KERN_DEBUG "proteon.c:    Ring Station Address: %pM\n",
+	       dev->dev_addr);
 		
 	tp = netdev_priv(dev);
 	tp->setnselout = proteon_setnselout_pins;
@@ -287,7 +283,7 @@ static void proteon_read_eeprom(struct net_device *dev)
 		dev->dev_addr[i] = proteon_sifreadw(dev, SIFINC) >> 8;
 }
 
-unsigned short proteon_setnselout_pins(struct net_device *dev)
+static unsigned short proteon_setnselout_pins(struct net_device *dev)
 {
 	return 0;
 }

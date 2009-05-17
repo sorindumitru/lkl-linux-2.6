@@ -12,6 +12,7 @@
 #include <linux/errno.h>
 #include <linux/sched.h>
 #include <linux/dma-mapping.h>
+#include <linux/scatterlist.h>
 
 #include "proto.h"
 
@@ -108,7 +109,8 @@ sys_pciconfig_write(unsigned long bus, unsigned long dfn,
 /* Stubs for the routines in pci_iommu.c: */
 
 void *
-pci_alloc_consistent(struct pci_dev *pdev, size_t size, dma_addr_t *dma_addrp)
+__pci_alloc_consistent(struct pci_dev *pdev, size_t size,
+		       dma_addr_t *dma_addrp, gfp_t gfp)
 {
 	return NULL;
 }
@@ -164,7 +166,7 @@ dma_alloc_coherent(struct device *dev, size_t size,
 	ret = (void *)__get_free_pages(gfp, get_order(size));
 	if (ret) {
 		memset(ret, 0, size);
-		*dma_handle = virt_to_bus(ret);
+		*dma_handle = virt_to_phys(ret);
 	}
 	return ret;
 }
@@ -172,18 +174,19 @@ dma_alloc_coherent(struct device *dev, size_t size,
 EXPORT_SYMBOL(dma_alloc_coherent);
 
 int
-dma_map_sg(struct device *dev, struct scatterlist *sg, int nents,
+dma_map_sg(struct device *dev, struct scatterlist *sgl, int nents,
 	   enum dma_data_direction direction)
 {
 	int i;
+	struct scatterlist *sg;
 
-	for (i = 0; i < nents; i++ ) {
+	for_each_sg(sgl, sg, nents, i) {
 		void *va;
 
-		BUG_ON(!sg[i].page);
-		va = page_address(sg[i].page) + sg[i].offset;
-		sg_dma_address(sg + i) = (dma_addr_t)virt_to_bus(va);
-		sg_dma_len(sg + i) = sg[i].length;
+		BUG_ON(!sg_page(sg));
+		va = sg_virt(sg);
+		sg_dma_address(sg) = (dma_addr_t)virt_to_phys(va);
+		sg_dma_len(sg) = sg->length;
 	}
 
 	return nents;

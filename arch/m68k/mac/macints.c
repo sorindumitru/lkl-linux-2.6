@@ -114,6 +114,7 @@
  *
  */
 
+#include <linux/module.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
@@ -126,7 +127,6 @@
 #include <asm/irq.h>
 #include <asm/traps.h>
 #include <asm/bootinfo.h>
-#include <asm/machw.h>
 #include <asm/macintosh.h>
 #include <asm/mac_via.h>
 #include <asm/mac_psc.h>
@@ -134,6 +134,7 @@
 #include <asm/errno.h>
 #include <asm/macints.h>
 #include <asm/irq_regs.h>
+#include <asm/mac_oss.h>
 
 #define DEBUG_SPURIOUS
 #define SHUTUP_SONIC
@@ -146,7 +147,6 @@ static int scc_mask;
  * VIA/RBV hooks
  */
 
-extern void via_init(void);
 extern void via_register_interrupts(void);
 extern void via_irq_enable(int);
 extern void via_irq_disable(int);
@@ -157,9 +157,6 @@ extern int  via_irq_pending(int);
  * OSS hooks
  */
 
-extern int oss_present;
-
-extern void oss_init(void);
 extern void oss_register_interrupts(void);
 extern void oss_irq_enable(int);
 extern void oss_irq_disable(int);
@@ -170,9 +167,6 @@ extern int  oss_irq_pending(int);
  * PSC hooks
  */
 
-extern int psc_present;
-
-extern void psc_init(void);
 extern void psc_register_interrupts(void);
 extern void psc_irq_enable(int);
 extern void psc_irq_disable(int);
@@ -191,12 +185,10 @@ extern void iop_register_interrupts(void);
 
 extern int baboon_present;
 
-extern void baboon_init(void);
 extern void baboon_register_interrupts(void);
 extern void baboon_irq_enable(int);
 extern void baboon_irq_disable(int);
 extern void baboon_irq_clear(int);
-extern int  baboon_irq_pending(int);
 
 /*
  * SCC interrupt routines
@@ -214,8 +206,8 @@ irqreturn_t mac_debug_handler(int, void *);
 
 /* #define DEBUG_MACINTS */
 
-static void mac_enable_irq(unsigned int irq);
-static void mac_disable_irq(unsigned int irq);
+void mac_enable_irq(unsigned int irq);
+void mac_disable_irq(unsigned int irq);
 
 static struct irq_controller mac_irq_controller = {
 	.name		= "mac",
@@ -224,7 +216,7 @@ static struct irq_controller mac_irq_controller = {
 	.disable	= mac_disable_irq,
 };
 
-void mac_init_IRQ(void)
+void __init mac_init_IRQ(void)
 {
 #ifdef DEBUG_MACINTS
 	printk("mac_init_IRQ(): Setting things up...\n");
@@ -258,8 +250,9 @@ void mac_init_IRQ(void)
 	if (baboon_present)
 		baboon_register_interrupts();
 	iop_register_interrupts();
-	request_irq(IRQ_AUTO_7, mac_nmi_handler, 0, "NMI",
-			mac_nmi_handler);
+	if (request_irq(IRQ_AUTO_7, mac_nmi_handler, 0, "NMI",
+			mac_nmi_handler))
+		pr_err("Couldn't register NMI\n");
 #ifdef DEBUG_MACINTS
 	printk("mac_init_IRQ(): Done!\n");
 #endif
@@ -274,7 +267,7 @@ void mac_init_IRQ(void)
  * These routines are just dispatchers to the VIA/OSS/PSC routines.
  */
 
-static void mac_enable_irq(unsigned int irq)
+void mac_enable_irq(unsigned int irq)
 {
 	int irq_src = IRQ_SRC(irq);
 
@@ -307,7 +300,7 @@ static void mac_enable_irq(unsigned int irq)
 	}
 }
 
-static void mac_disable_irq(unsigned int irq)
+void mac_disable_irq(unsigned int irq)
 {
 	int irq_src = IRQ_SRC(irq);
 
@@ -391,6 +384,7 @@ int mac_irq_pending(unsigned int irq)
 	}
 	return 0;
 }
+EXPORT_SYMBOL(mac_irq_pending);
 
 static int num_debug[8];
 

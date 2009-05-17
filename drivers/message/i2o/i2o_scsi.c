@@ -370,19 +370,15 @@ static int i2o_scsi_reply(struct i2o_controller *c, u32 m,
 	 */
 	if (cmd->result)
 		memcpy(cmd->sense_buffer, &msg->body[3],
-		       min(sizeof(cmd->sense_buffer), (size_t) 40));
+		       min(SCSI_SENSE_BUFFERSIZE, 40));
 
 	/* only output error code if AdapterStatus is not HBA_SUCCESS */
 	if ((error >> 8) & 0xff)
 		osm_err("SCSI error %08x\n", error);
 
 	dev = &c->pdev->dev;
-	if (cmd->use_sg)
-		dma_unmap_sg(dev, cmd->request_buffer, cmd->use_sg,
-			     cmd->sc_data_direction);
-	else if (cmd->SCp.dma_handle)
-		dma_unmap_single(dev, cmd->SCp.dma_handle, cmd->request_bufflen,
-				 cmd->sc_data_direction);
+
+	scsi_dma_unmap(cmd);
 
 	cmd->scsi_done(cmd);
 
@@ -394,7 +390,7 @@ static int i2o_scsi_reply(struct i2o_controller *c, u32 m,
  *	@i2o_dev: the I2O device which was added
  *
  *	If a I2O device is added we catch the notification, because I2O classes
- *	other then SCSI peripheral will not be received through
+ *	other than SCSI peripheral will not be received through
  *	i2o_scsi_probe().
  */
 static void i2o_scsi_notify_device_add(struct i2o_device *i2o_dev)
@@ -664,20 +660,14 @@ static int i2o_scsi_queuecommand(struct scsi_cmnd *SCpnt,
 
 	if (sgl_offset != SGL_OFFSET_0) {
 		/* write size of data addressed by SGL */
-		*mptr++ = cpu_to_le32(SCpnt->request_bufflen);
+		*mptr++ = cpu_to_le32(scsi_bufflen(SCpnt));
 
 		/* Now fill in the SGList and command */
-		if (SCpnt->use_sg) {
-			if (!i2o_dma_map_sg(c, SCpnt->request_buffer,
-					    SCpnt->use_sg,
+
+		if (scsi_sg_count(SCpnt)) {
+			if (!i2o_dma_map_sg(c, scsi_sglist(SCpnt),
+					    scsi_sg_count(SCpnt),
 					    SCpnt->sc_data_direction, &mptr))
-				goto nomem;
-		} else {
-			SCpnt->SCp.dma_handle =
-			    i2o_dma_map_single(c, SCpnt->request_buffer,
-					       SCpnt->request_bufflen,
-					       SCpnt->sc_data_direction, &mptr);
-			if (dma_mapping_error(SCpnt->SCp.dma_handle))
 				goto nomem;
 		}
 	}

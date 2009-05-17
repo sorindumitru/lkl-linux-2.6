@@ -15,6 +15,7 @@ struct rpc_pipe_ops {
 	ssize_t (*upcall)(struct file *, struct rpc_pipe_msg *, char __user *, size_t);
 	ssize_t (*downcall)(struct file *, const char __user *, size_t);
 	void (*release_pipe)(struct inode *);
+	int (*open_pipe)(struct inode *);
 	void (*destroy_msg)(struct rpc_pipe_msg *);
 };
 
@@ -23,9 +24,11 @@ struct rpc_inode {
 	void *private;
 	struct list_head pipe;
 	struct list_head in_upcall;
+	struct list_head in_downcall;
 	int pipelen;
 	int nreaders;
 	int nwriters;
+	int nkern_readwriters;
 	wait_queue_head_t waitq;
 #define RPC_PIPE_WAIT_FOR_OPEN	1
 	int flags;

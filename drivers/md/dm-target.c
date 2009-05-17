@@ -88,12 +88,10 @@ void dm_put_target_type(struct target_type *t)
 
 static struct tt_internal *alloc_target(struct target_type *t)
 {
-	struct tt_internal *ti = kmalloc(sizeof(*ti), GFP_KERNEL);
+	struct tt_internal *ti = kzalloc(sizeof(*ti), GFP_KERNEL);
 
-	if (ti) {
-		memset(ti, 0, sizeof(*ti));
+	if (ti)
 		ti->tt = *t;
-	}
 
 	return ti;
 }
@@ -132,26 +130,26 @@ int dm_register_target(struct target_type *t)
 	return rv;
 }
 
-int dm_unregister_target(struct target_type *t)
+void dm_unregister_target(struct target_type *t)
 {
 	struct tt_internal *ti;
 
 	down_write(&_lock);
 	if (!(ti = __find_target_type(t->name))) {
-		up_write(&_lock);
-		return -EINVAL;
+		DMCRIT("Unregistering unrecognised target: %s", t->name);
+		BUG();
 	}
 
 	if (ti->use) {
-		up_write(&_lock);
-		return -ETXTBSY;
+		DMCRIT("Attempt to unregister target still in use: %s",
+		       t->name);
+		BUG();
 	}
 
 	list_del(&ti->list);
 	kfree(ti);
 
 	up_write(&_lock);
-	return 0;
 }
 
 /*
@@ -189,8 +187,7 @@ int __init dm_target_init(void)
 
 void dm_target_exit(void)
 {
-	if (dm_unregister_target(&error_target))
-		DMWARN("error target unregistration failed");
+	dm_unregister_target(&error_target);
 }
 
 EXPORT_SYMBOL(dm_register_target);

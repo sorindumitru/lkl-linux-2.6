@@ -84,11 +84,9 @@ typedef struct xfs_dqblk {
 #define XFS_DQ_USER		0x0001		/* a user quota */
 #define XFS_DQ_PROJ		0x0002		/* project quota */
 #define XFS_DQ_GROUP		0x0004		/* a group quota */
-#define XFS_DQ_FLOCKED		0x0008		/* flush lock taken */
-#define XFS_DQ_DIRTY		0x0010		/* dquot is dirty */
-#define XFS_DQ_WANT		0x0020		/* for lookup/reclaim race */
-#define XFS_DQ_INACTIVE		0x0040		/* dq off mplist & hashlist */
-#define XFS_DQ_MARKER		0x0080		/* sentinel */
+#define XFS_DQ_DIRTY		0x0008		/* dquot is dirty */
+#define XFS_DQ_WANT		0x0010		/* for lookup/reclaim race */
+#define XFS_DQ_INACTIVE		0x0020		/* dq off mplist & hashlist */
 
 #define XFS_DQ_ALLTYPES		(XFS_DQ_USER|XFS_DQ_PROJ|XFS_DQ_GROUP)
 
@@ -330,12 +328,12 @@ typedef struct xfs_dqtrxops {
 } xfs_dqtrxops_t;
 
 #define XFS_DQTRXOP(mp, tp, op, args...) \
-		((mp)->m_qm_ops.xfs_dqtrxops ? \
-		((mp)->m_qm_ops.xfs_dqtrxops->op)(tp, ## args) : 0)
+		((mp)->m_qm_ops->xfs_dqtrxops ? \
+		((mp)->m_qm_ops->xfs_dqtrxops->op)(tp, ## args) : 0)
 
 #define XFS_DQTRXOP_VOID(mp, tp, op, args...) \
-		((mp)->m_qm_ops.xfs_dqtrxops ? \
-		((mp)->m_qm_ops.xfs_dqtrxops->op)(tp, ## args) : (void)0)
+		((mp)->m_qm_ops->xfs_dqtrxops ? \
+		((mp)->m_qm_ops->xfs_dqtrxops->op)(tp, ## args) : (void)0)
 
 #define XFS_TRANS_DUP_DQINFO(mp, otp, ntp) \
 	XFS_DQTRXOP_VOID(mp, otp, qo_dup_dqinfo, ntp)
@@ -364,7 +362,7 @@ typedef struct xfs_dqtrxops {
 extern int xfs_qm_dqcheck(xfs_disk_dquot_t *, xfs_dqid_t, uint, uint, char *);
 extern int xfs_mount_reset_sbqflags(struct xfs_mount *);
 
-extern struct bhv_module_vfsops xfs_qmops;
+extern struct xfs_qmops xfs_qmcore_xfs;
 
 #endif	/* __KERNEL__ */
 

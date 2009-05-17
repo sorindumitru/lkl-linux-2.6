@@ -1,6 +1,7 @@
 /* ld script to make m68k Linux kernel */
 
 #include <asm-generic/vmlinux.lds.h>
+#include <asm/page.h>
 
 OUTPUT_FORMAT("elf32-m68k", "elf32-m68k", "elf32-m68k")
 OUTPUT_ARCH(m68k)
@@ -11,12 +12,15 @@ SECTIONS
   . = 0x1000;
   _text = .;			/* Text and read-only data */
   .text : {
+	*(.text.head)
 	TEXT_TEXT
 	SCHED_TEXT
 	LOCK_TEXT
 	*(.fixup)
 	*(.gnu.warning)
 	} :text = 0x4e75
+
+  _etext = .;			/* End of text section */
 
   . = ALIGN(16);		/* Exception table */
   __start___ex_table = .;
@@ -25,29 +29,27 @@ SECTIONS
 
   RODATA
 
-  _etext = .;			/* End of text section */
-
   .data : {			/* Data */
 	DATA_DATA
 	CONSTRUCTORS
 	}
 
-  .bss : { *(.bss) }		/* BSS */
-
   . = ALIGN(16);
-  .data.cacheline_aligned : { *(.data.cacheline_aligned) } :data
+  .data.cacheline_aligned : { *(.data.cacheline_aligned) }
+
+  .bss : { *(.bss) }		/* BSS */
 
   _edata = .;			/* End of data section */
 
   /* will be freed after init */
-  . = ALIGN(4096);		/* Init code and data */
+  . = ALIGN(PAGE_SIZE);		/* Init code and data */
   __init_begin = .;
   .init.text : {
 	_sinittext = .;
-	*(.init.text)
+	INIT_TEXT
 	_einittext = .;
-  }
-  .init.data : { *(.init.data) }
+  } :data
+  .init.data : { INIT_DATA }
   . = ALIGN(16);
   __setup_start = .;
   .init.setup : { *(.init.setup) }
@@ -72,6 +74,7 @@ SECTIONS
   .init.ramfs : { *(.init.ramfs) }
   __initramfs_end = .;
 #endif
+  NOTES
   . = ALIGN(8192);
   __init_end = .;
 
@@ -81,8 +84,8 @@ SECTIONS
 
   /* Sections to be discarded */
   /DISCARD/ : {
-	*(.exit.text)
-	*(.exit.data)
+	EXIT_TEXT
+	EXIT_DATA
 	*(.exitcall.exit)
 	}
 

@@ -38,6 +38,7 @@
 #include "dlmglue.h"
 #include "file.h"
 #include "inode.h"
+#include "super.h"
 
 
 static int ocfs2_dentry_revalidate(struct dentry *dentry,
@@ -128,9 +129,9 @@ static int ocfs2_match_dentry(struct dentry *dentry,
 /*
  * Walk the inode alias list, and find a dentry which has a given
  * parent. ocfs2_dentry_attach_lock() wants to find _any_ alias as it
- * is looking for a dentry_lock reference. The vote thread is looking
- * to unhash aliases, so we allow it to skip any that already have
- * that property.
+ * is looking for a dentry_lock reference. The downconvert thread is
+ * looking to unhash aliases, so we allow it to skip any that already
+ * have that property.
  */
 struct dentry *ocfs2_find_local_alias(struct inode *inode,
 				      u64 parent_blkno,
@@ -266,7 +267,7 @@ int ocfs2_dentry_attach_lock(struct dentry *dentry,
 	dl->dl_count = 0;
 	/*
 	 * Does this have to happen below, for all attaches, in case
-	 * the struct inode gets blown away by votes?
+	 * the struct inode gets blown away by the downconvert thread?
 	 */
 	dl->dl_inode = igrab(inode);
 	dl->dl_parent_blkno = parent_blkno;
@@ -292,6 +293,34 @@ out_attach:
 	dput(alias);
 
 	return ret;
+}
+
+static DEFINE_SPINLOCK(dentry_list_lock);
+
+/* We limit the number of dentry locks to drop in one go. We have
+ * this limit so that we don't starve other users of ocfs2_wq. */
+#define DL_INODE_DROP_COUNT 64
+
+/* Drop inode references from dentry locks */
+void ocfs2_drop_dl_inodes(struct work_struct *work)
+{
+	struct ocfs2_super *osb = container_of(work, struct ocfs2_super,
+					       dentry_lock_work);
+	struct ocfs2_dentry_lock *dl;
+	int drop_count = DL_INODE_DROP_COUNT;
+
+	spin_lock(&dentry_list_lock);
+	while (osb->dentry_lock_list && drop_count--) {
+		dl = osb->dentry_lock_list;
+		osb->dentry_lock_list = dl->dl_next;
+		spin_unlock(&dentry_list_lock);
+		iput(dl->dl_inode);
+		kfree(dl);
+		spin_lock(&dentry_list_lock);
+	}
+	if (osb->dentry_lock_list)
+		queue_work(ocfs2_wq, &osb->dentry_lock_work);
+	spin_unlock(&dentry_list_lock);
 }
 
 /*
@@ -320,14 +349,21 @@ static void ocfs2_drop_dentry_lock(struct ocfs2_super *osb,
 {
 	ocfs2_simple_drop_lockres(osb, &dl->dl_lockres);
 	ocfs2_lock_res_free(&dl->dl_lockres);
-	iput(dl->dl_inode);
-	kfree(dl);
+
+	/* We leave dropping of inode reference to ocfs2_wq as that can
+	 * possibly lead to inode deletion which gets tricky */
+	spin_lock(&dentry_list_lock);
+	if (!osb->dentry_lock_list)
+		queue_work(ocfs2_wq, &osb->dentry_lock_work);
+	dl->dl_next = osb->dentry_lock_list;
+	osb->dentry_lock_list = dl;
+	spin_unlock(&dentry_list_lock);
 }
 
 void ocfs2_dentry_lock_put(struct ocfs2_super *osb,
 			   struct ocfs2_dentry_lock *dl)
 {
-	int unlock = 0;
+	int unlock;
 
 	BUG_ON(dl->dl_count == 0);
 
@@ -344,12 +380,24 @@ static void ocfs2_dentry_iput(struct dentry *dentry, struct inode *inode)
 {
 	struct ocfs2_dentry_lock *dl = dentry->d_fsdata;
 
-	mlog_bug_on_msg(!dl && !(dentry->d_flags & DCACHE_DISCONNECTED),
-			"dentry: %.*s\n", dentry->d_name.len,
-			dentry->d_name.name);
+	if (!dl) {
+		/*
+		 * No dentry lock is ok if we're disconnected or
+		 * unhashed.
+		 */
+		if (!(dentry->d_flags & DCACHE_DISCONNECTED) &&
+		    !d_unhashed(dentry)) {
+			unsigned long long ino = 0ULL;
+			if (inode)
+				ino = (unsigned long long)OCFS2_I(inode)->ip_blkno;
+			mlog(ML_ERROR, "Dentry is missing cluster lock. "
+			     "inode: %llu, d_flags: 0x%x, d_name: %.*s\n",
+			     ino, dentry->d_flags, dentry->d_name.len,
+			     dentry->d_name.name);
+		}
 
-	if (!dl)
 		goto out;
+	}
 
 	mlog_bug_on_msg(dl->dl_count == 0, "dentry: %.*s, count: %u\n",
 			dentry->d_name.len, dentry->d_name.name,
@@ -376,7 +424,7 @@ out:
  * directory locks. The dentries have already been deleted on other
  * nodes via ocfs2_remote_dentry_delete().
  *
- * Normally, the VFS handles the d_move() for the file sytem, after
+ * Normally, the VFS handles the d_move() for the file system, after
  * the ->rename() callback. OCFS2 wants to handle this internally, so
  * the new lock can be created atomically with respect to the cluster.
  */

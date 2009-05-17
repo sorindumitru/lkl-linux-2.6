@@ -8,15 +8,20 @@
  * Author(s): Melissa Howland <Melissa.Howland@us.ibm.com>
  */
 
+#define KMSG_COMPONENT "monwriter"
+#define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
+
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
 #include <linux/errno.h>
+#include <linux/smp_lock.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
 #include <linux/miscdevice.h>
 #include <linux/ctype.h>
 #include <linux/poll.h>
+#include <linux/mutex.h>
 #include <asm/uaccess.h>
 #include <asm/ebcdic.h>
 #include <asm/io.h>
@@ -41,6 +46,7 @@ struct mon_private {
 	size_t hdr_to_read;
 	size_t data_to_read;
 	struct mon_buf *current_buf;
+	struct mutex thread_mutex;
 };
 
 /*
@@ -61,9 +67,9 @@ static int monwrite_diag(struct monwrite_hdr *myhdr, char *buffer, int fcn)
 	rc = appldata_asm(&id, fcn, (void *) buffer, myhdr->datalen);
 	if (rc <= 0)
 		return rc;
+	pr_err("Writing monitor data failed with rc=%i\n", rc);
 	if (rc == 5)
 		return -EPERM;
-	printk("DIAG X'DC' error with return code: %i\n", rc);
 	return -EINVAL;
 }
 
@@ -177,9 +183,12 @@ static int monwrite_open(struct inode *inode, struct file *filp)
 	monpriv = kzalloc(sizeof(struct mon_private), GFP_KERNEL);
 	if (!monpriv)
 		return -ENOMEM;
+	lock_kernel();
 	INIT_LIST_HEAD(&monpriv->list);
 	monpriv->hdr_to_read = sizeof(monpriv->hdr);
+	mutex_init(&monpriv->thread_mutex);
 	filp->private_data = monpriv;
+	unlock_kernel();
 	return nonseekable_open(inode, filp);
 }
 
@@ -209,6 +218,7 @@ static ssize_t monwrite_write(struct file *filp, const char __user *data,
 	void *to;
 	int rc;
 
+	mutex_lock(&monpriv->thread_mutex);
 	for (written = 0; written < count; ) {
 		if (monpriv->hdr_to_read) {
 			len = min(count - written, monpriv->hdr_to_read);
@@ -247,11 +257,13 @@ static ssize_t monwrite_write(struct file *filp, const char __user *data,
 		}
 		monpriv->hdr_to_read = sizeof(monpriv->hdr);
 	}
+	mutex_unlock(&monpriv->thread_mutex);
 	return written;
 
 out_error:
 	monpriv->data_to_read = 0;
 	monpriv->hdr_to_read = sizeof(struct monwrite_hdr);
+	mutex_unlock(&monpriv->thread_mutex);
 	return rc;
 }
 
@@ -289,7 +301,7 @@ module_init(mon_init);
 module_exit(mon_exit);
 
 module_param_named(max_bufs, mon_max_bufs, int, 0644);
-MODULE_PARM_DESC(max_bufs, "Maximum number of sample monitor data buffers"
+MODULE_PARM_DESC(max_bufs, "Maximum number of sample monitor data buffers "
 		 "that can be active at one time");
 
 MODULE_AUTHOR("Melissa Howland <Melissa.Howland@us.ibm.com>");

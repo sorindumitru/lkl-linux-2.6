@@ -23,7 +23,7 @@
     Marcelo Tosatti <marcelo@conectiva.com.br> :
     Made it compile in 2.3 (device to net_device)
 
-    Alan Cox <alan@redhat.com> :
+    Alan Cox <alan@lxorguk.ukuu.org.uk> :
     Cleaned up for kernel merge.
     Removed the back compatibility support
     Reformatted, fixing spelling etc as I went
@@ -49,7 +49,7 @@
     support.  Updated PCI resource allocation.  Do not
     forget to unmap PCI mapped skbs.
 
-    Alan Cox <alan@redhat.com>
+    Alan Cox <alan@lxorguk.ukuu.org.uk>
     Added new PCI identifiers provided by Clear Zhang at ALi
     for their 1563 ethernet device.
 
@@ -181,11 +181,12 @@
 	udelay(5);
 
 #define __CHK_IO_SIZE(pci_id, dev_rev) \
- (( ((pci_id)==PCI_DM9132_ID) || ((dev_rev) >= 0x02000030) ) ? \
+ (( ((pci_id)==PCI_DM9132_ID) || ((dev_rev) >= 0x30) ) ? \
 	DM9102A_IO_SIZE: DM9102_IO_SIZE)
 
-#define CHK_IO_SIZE(pci_dev, dev_rev) \
-	(__CHK_IO_SIZE(((pci_dev)->device << 16) | (pci_dev)->vendor, dev_rev))
+#define CHK_IO_SIZE(pci_dev) \
+	(__CHK_IO_SIZE(((pci_dev)->device << 16) | (pci_dev)->vendor, \
+	(pci_dev)->revision))
 
 /* Sten Check */
 #define DEVICE net_device
@@ -205,7 +206,7 @@ struct rx_desc {
 
 struct dmfe_board_info {
 	u32 chip_id;			/* Chip vendor/Device ID */
-	u32 chip_revision;		/* Chip revision */
+	u8 chip_revision;		/* Chip revision */
 	struct DEVICE *next_dev;	/* next device */
 	struct pci_dev *pdev;		/* PCI device */
 	spinlock_t lock;
@@ -255,9 +256,6 @@ struct dmfe_board_info {
 	u8 first_in_callback;		/* Flag to record state */
 	u8 wol_mode;			/* user WOL settings */
 	struct timer_list timer;
-
-	/* System defined statistic counter */
-	struct net_device_stats stats;
 
 	/* Driver defined statistic counter */
 	unsigned long tx_fifo_underrun;
@@ -315,7 +313,6 @@ static u8 SF_mode;		/* Special Function: 1:VLAN, 2:RX Flow Control
 static int dmfe_open(struct DEVICE *);
 static int dmfe_start_xmit(struct sk_buff *, struct DEVICE *);
 static int dmfe_stop(struct DEVICE *);
-static struct net_device_stats * dmfe_get_stats(struct DEVICE *);
 static void dmfe_set_filter_mode(struct DEVICE *);
 static const struct ethtool_ops netdev_ethtool_ops;
 static u16 read_srom_word(long ,int);
@@ -350,6 +347,19 @@ static void dmfe_set_phyxcer(struct dmfe_board_info *);
 
 /* DM910X network board routine ---------------------------- */
 
+static const struct net_device_ops netdev_ops = {
+	.ndo_open 		= dmfe_open,
+	.ndo_stop		= dmfe_stop,
+	.ndo_start_xmit		= dmfe_start_xmit,
+	.ndo_set_multicast_list = dmfe_set_filter_mode,
+	.ndo_change_mtu		= eth_change_mtu,
+	.ndo_set_mac_address	= eth_mac_addr,
+	.ndo_validate_addr	= eth_validate_addr,
+#ifdef CONFIG_NET_POLL_CONTROLLER
+	.ndo_poll_controller	= poll_dmfe,
+#endif
+};
+
 /*
  *	Search DM910X board ,allocate space and register it
  */
@@ -359,7 +369,7 @@ static int __devinit dmfe_init_one (struct pci_dev *pdev,
 {
 	struct dmfe_board_info *db;	/* board information structure */
 	struct net_device *dev;
-	u32 dev_rev, pci_pmr;
+	u32 pci_pmr;
 	int i, err;
 
 	DMFE_DBUG(0, "dmfe_init_one()", 0);
@@ -371,7 +381,6 @@ static int __devinit dmfe_init_one (struct pci_dev *pdev,
 	dev = alloc_etherdev(sizeof(*db));
 	if (dev == NULL)
 		return -ENOMEM;
-	SET_MODULE_OWNER(dev);
 	SET_NETDEV_DEV(dev, &pdev->dev);
 
 	if (pci_set_dma_mask(pdev, DMA_32BIT_MASK)) {
@@ -392,10 +401,7 @@ static int __devinit dmfe_init_one (struct pci_dev *pdev,
 		goto err_out_disable;
 	}
 
-	/* Read Chip revision */
-	pci_read_config_dword(pdev, PCI_REVISION_ID, &dev_rev);
-
-	if (pci_resource_len(pdev, 0) < (CHK_IO_SIZE(pdev, dev_rev)) ) {
+	if (pci_resource_len(pdev, 0) < (CHK_IO_SIZE(pdev)) ) {
 		printk(KERN_ERR DRV_NAME ": Allocated I/O size too small\n");
 		err = -ENODEV;
 		goto err_out_disable;
@@ -422,9 +428,13 @@ static int __devinit dmfe_init_one (struct pci_dev *pdev,
 	/* Allocate Tx/Rx descriptor memory */
 	db->desc_pool_ptr = pci_alloc_consistent(pdev, sizeof(struct tx_desc) *
 			DESC_ALL_CNT + 0x20, &db->desc_pool_dma_ptr);
+	if (!db->desc_pool_ptr)
+		goto err_out_res;
 
 	db->buf_pool_ptr = pci_alloc_consistent(pdev, TX_BUF_ALLOC *
 			TX_DESC_CNT + 4, &db->buf_pool_dma_ptr);
+	if (!db->buf_pool_ptr)
+		goto err_out_free_desc;
 
 	db->first_tx_desc = (struct tx_desc *) db->desc_pool_ptr;
 	db->first_tx_desc_dma = db->desc_pool_dma_ptr;
@@ -433,7 +443,7 @@ static int __devinit dmfe_init_one (struct pci_dev *pdev,
 
 	db->chip_id = ent->driver_data;
 	db->ioaddr = pci_resource_start(pdev, 0);
-	db->chip_revision = dev_rev;
+	db->chip_revision = pdev->revision;
 	db->wol_mode = 0;
 
 	db->pdev = pdev;
@@ -441,21 +451,14 @@ static int __devinit dmfe_init_one (struct pci_dev *pdev,
 	dev->base_addr = db->ioaddr;
 	dev->irq = pdev->irq;
 	pci_set_drvdata(pdev, dev);
-	dev->open = &dmfe_open;
-	dev->hard_start_xmit = &dmfe_start_xmit;
-	dev->stop = &dmfe_stop;
-	dev->get_stats = &dmfe_get_stats;
-	dev->set_multicast_list = &dmfe_set_filter_mode;
-#ifdef CONFIG_NET_POLL_CONTROLLER
-	dev->poll_controller = &poll_dmfe;
-#endif
+	dev->netdev_ops = &netdev_ops;
 	dev->ethtool_ops = &netdev_ethtool_ops;
 	netif_carrier_off(dev);
 	spin_lock_init(&db->lock);
 
 	pci_read_config_dword(pdev, 0x50, &pci_pmr);
 	pci_pmr &= 0x70000;
-	if ( (pci_pmr == 0x10000) && (dev_rev == 0x02000031) )
+	if ( (pci_pmr == 0x10000) && (db->chip_revision == 0x31) )
 		db->chip_type = 1;	/* DM9102A E3 */
 	else
 		db->chip_type = 0;
@@ -471,20 +474,25 @@ static int __devinit dmfe_init_one (struct pci_dev *pdev,
 
 	err = register_netdev (dev);
 	if (err)
-		goto err_out_res;
+		goto err_out_free_buf;
 
-	printk(KERN_INFO "%s: Davicom DM%04lx at pci%s,",
-		dev->name,
-		ent->driver_data >> 16,
-		pci_name(pdev));
-	for (i = 0; i < 6; i++)
-		printk("%c%02x", i ? ':' : ' ', dev->dev_addr[i]);
-	printk(", irq %d.\n", dev->irq);
+	printk(KERN_INFO "%s: Davicom DM%04lx at pci%s, %pM, irq %d.\n",
+	       dev->name,
+	       ent->driver_data >> 16,
+	       pci_name(pdev),
+	       dev->dev_addr,
+	       dev->irq);
 
 	pci_set_master(pdev);
 
 	return 0;
 
+err_out_free_buf:
+	pci_free_consistent(pdev, TX_BUF_ALLOC * TX_DESC_CNT + 4,
+			    db->buf_pool_ptr, db->buf_pool_dma_ptr);
+err_out_free_desc:
+	pci_free_consistent(pdev, sizeof(struct tx_desc) * DESC_ALL_CNT + 0x20,
+			    db->desc_pool_ptr, db->desc_pool_dma_ptr);
 err_out_res:
 	pci_release_regions(pdev);
 err_out_disable:
@@ -553,7 +561,7 @@ static int dmfe_open(struct DEVICE *dev)
 
 	/* CR6 operation mode decision */
 	if ( !chkmode || (db->chip_id == PCI_DM9132_ID) ||
-		(db->chip_revision >= 0x02000030) ) {
+		(db->chip_revision >= 0x30) ) {
     		db->cr6_data |= DMFE_TXTH_256;
 		db->cr0_data = CR0_DEFAULT;
 		db->dm910x_chk_mode=4;		/* Enter the normal mode */
@@ -861,15 +869,15 @@ static void dmfe_free_tx_pkt(struct DEVICE *dev, struct dmfe_board_info * db)
 
 		/* A packet sent completed */
 		db->tx_packet_cnt--;
-		db->stats.tx_packets++;
+		dev->stats.tx_packets++;
 
 		/* Transmit statistic counter */
 		if ( tdes0 != 0x7fffffff ) {
 			/* printk(DRV_NAME ": tdes0=%x\n", tdes0); */
-			db->stats.collisions += (tdes0 >> 3) & 0xf;
-			db->stats.tx_bytes += le32_to_cpu(txptr->tdes1) & 0x7ff;
+			dev->stats.collisions += (tdes0 >> 3) & 0xf;
+			dev->stats.tx_bytes += le32_to_cpu(txptr->tdes1) & 0x7ff;
 			if (tdes0 & TDES0_ERR_MASK) {
-				db->stats.tx_errors++;
+				dev->stats.tx_errors++;
 
 				if (tdes0 & 0x0002) {	/* UnderRun */
 					db->tx_fifo_underrun++;
@@ -963,13 +971,13 @@ static void dmfe_rx_packet(struct DEVICE *dev, struct dmfe_board_info * db)
 			if (rdes0 & 0x8000) {
 				/* This is a error packet */
 				//printk(DRV_NAME ": rdes0: %lx\n", rdes0);
-				db->stats.rx_errors++;
+				dev->stats.rx_errors++;
 				if (rdes0 & 1)
-					db->stats.rx_fifo_errors++;
+					dev->stats.rx_fifo_errors++;
 				if (rdes0 & 2)
-					db->stats.rx_crc_errors++;
+					dev->stats.rx_crc_errors++;
 				if (rdes0 & 0x80)
-					db->stats.rx_length_errors++;
+					dev->stats.rx_length_errors++;
 			}
 
 			if ( !(rdes0 & 0x8000) ||
@@ -1002,9 +1010,8 @@ static void dmfe_rx_packet(struct DEVICE *dev, struct dmfe_board_info * db)
 
 					skb->protocol = eth_type_trans(skb, dev);
 					netif_rx(skb);
-					dev->last_rx = jiffies;
-					db->stats.rx_packets++;
-					db->stats.rx_bytes += rxlen;
+					dev->stats.rx_packets++;
+					dev->stats.rx_bytes += rxlen;
 				}
 			} else {
 				/* Reuse SKB buffer when the packet is error */
@@ -1018,20 +1025,6 @@ static void dmfe_rx_packet(struct DEVICE *dev, struct dmfe_board_info * db)
 
 	db->rx_ready_ptr = rxptr;
 }
-
-
-/*
- *	Get statistics from driver.
- */
-
-static struct net_device_stats * dmfe_get_stats(struct DEVICE *dev)
-{
-	struct dmfe_board_info *db = netdev_priv(dev);
-
-	DMFE_DBUG(0, "dmfe_get_stats", 0);
-	return &db->stats;
-}
-
 
 /*
  * Set DM910X multicast address
@@ -1156,7 +1149,7 @@ static void dmfe_timer(unsigned long data)
 
 	/* Operating Mode Check */
 	if ( (db->dm910x_chk_mode & 0x1) &&
-		(db->stats.rx_packets > MAX_CHECK_PACKET) )
+		(dev->stats.rx_packets > MAX_CHECK_PACKET) )
 		db->dm910x_chk_mode = 0x4;
 
 	/* Dynamic reset DM910X : system error or transmit time-out */
@@ -1199,9 +1192,9 @@ static void dmfe_timer(unsigned long data)
 		tmp_cr12 = inb(db->ioaddr + DCR12);	/* DM9102/DM9102A */
 
 	if ( ((db->chip_id == PCI_DM9102_ID) &&
-		(db->chip_revision == 0x02000030)) ||
+		(db->chip_revision == 0x30)) ||
 		((db->chip_id == PCI_DM9132_ID) &&
-		(db->chip_revision == 0x02000010)) ) {
+		(db->chip_revision == 0x10)) ) {
 		/* DM9102A Chip */
 		if (tmp_cr12 & 2)
 			link_ok = 0;
@@ -1911,7 +1904,7 @@ static void dmfe_parse_srom(struct dmfe_board_info * db)
 	if ( ( (int) srom[18] & 0xff) == SROM_V41_CODE) {
 		/* SROM V4.01 */
 		/* Get NIC support media mode */
-		db->NIC_capability = le16_to_cpup((__le16 *)srom + 34/2);
+		db->NIC_capability = le16_to_cpup((__le16 *) (srom + 34));
 		db->PHY_reg4 = 0;
 		for (tmp_reg = 1; tmp_reg < 0x10; tmp_reg <<= 1) {
 			switch( db->NIC_capability & tmp_reg ) {
@@ -1923,8 +1916,8 @@ static void dmfe_parse_srom(struct dmfe_board_info * db)
 		}
 
 		/* Media Mode Force or not check */
-		dmfe_mode = le32_to_cpup((__le32 *)srom + 34/4) &
-				le32_to_cpup((__le32 *)srom + 36/4);
+		dmfe_mode = (le32_to_cpup((__le32 *) (srom + 34)) &
+			     le32_to_cpup((__le32 *) (srom + 36)));
 		switch(dmfe_mode) {
 		case 0x4: dmfe_media_mode = DMFE_100MHF; break;	/* 100MHF */
 		case 0x2: dmfe_media_mode = DMFE_10MFD; break;	/* 10MFD */
@@ -2120,8 +2113,8 @@ static int dmfe_suspend(struct pci_dev *pci_dev, pm_message_t state)
 	pci_enable_wake(pci_dev, PCI_D3cold, 1);
 
 	/* Power down device*/
-	pci_set_power_state(pci_dev, pci_choose_state (pci_dev,state));
 	pci_save_state(pci_dev);
+	pci_set_power_state(pci_dev, pci_choose_state (pci_dev, state));
 
 	return 0;
 }
@@ -2131,8 +2124,8 @@ static int dmfe_resume(struct pci_dev *pci_dev)
 	struct net_device *dev = pci_get_drvdata(pci_dev);
 	u32 tmp;
 
-	pci_restore_state(pci_dev);
 	pci_set_power_state(pci_dev, PCI_D0);
+	pci_restore_state(pci_dev);
 
 	/* Re-initilize DM910X board */
 	dmfe_init_dm910x(dev);

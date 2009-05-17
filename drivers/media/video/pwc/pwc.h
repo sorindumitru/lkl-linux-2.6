@@ -31,10 +31,12 @@
 #include <linux/wait.h>
 #include <linux/smp_lock.h>
 #include <linux/version.h>
-#include <asm/semaphore.h>
+#include <linux/mutex.h>
+#include <linux/mm.h>
 #include <asm/errno.h>
 #include <linux/videodev.h>
 #include <media/v4l2-common.h>
+#include <media/v4l2-ioctl.h>
 
 #include "pwc-uncompress.h"
 #include <media/pwc-ioctl.h>
@@ -193,6 +195,7 @@ struct pwc_device
    char vsnapshot;		/* snapshot mode */
    char vsync;			/* used by isoc handler */
    char vmirror;		/* for ToUCaM series */
+	char unplugged;
 
    int cmd_len;
    unsigned char cmd_buf[13];
@@ -244,7 +247,7 @@ struct pwc_device
    int image_read_pos;			/* In case we read data in pieces, keep track of were we are in the imagebuffer */
    int image_used[MAX_IMAGES];		/* For MCAPTURE and SYNC */
 
-   struct semaphore modlock;		/* to prevent races in video_open(), etc */
+   struct mutex modlock;		/* to prevent races in video_open(), etc */
    spinlock_t ptrlock;			/* for manipulating the buffer pointers */
 
    /*** motorized pan/tilt feature */
@@ -334,11 +337,10 @@ extern int pwc_get_dynamic_noise(struct pwc_device *pdev, int *noise);
 extern int pwc_camera_power(struct pwc_device *pdev, int power);
 
 /* Private ioctl()s; see pwc-ioctl.h */
-extern int pwc_ioctl(struct pwc_device *pdev, unsigned int cmd, void *arg);
+extern long pwc_ioctl(struct pwc_device *pdev, unsigned int cmd, void *arg);
 
 /** Functions in pwc-v4l.c */
-extern int pwc_video_do_ioctl(struct inode *inode, struct file *file,
-			      unsigned int cmd, void *arg);
+extern long pwc_video_do_ioctl(struct file *file, unsigned int cmd, void *arg);
 
 /** pwc-uncompress.c */
 /* Expand frame to image, possibly including decompression. Uses read_frame and fill_image */

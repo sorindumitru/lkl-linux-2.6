@@ -39,11 +39,6 @@
 
 #include "hidp.h"
 
-#ifndef CONFIG_BT_HIDP_DEBUG
-#undef  BT_DBG
-#define BT_DBG(D...)
-#endif
-
 static int hidp_sock_release(struct socket *sock)
 {
 	struct sock *sk = sock->sk;
@@ -86,13 +81,13 @@ static int hidp_sock_ioctl(struct socket *sock, unsigned int cmd, unsigned long 
 
 		isock = sockfd_lookup(ca.intr_sock, &err);
 		if (!isock) {
-			fput(csock->file);
+			sockfd_put(csock);
 			return err;
 		}
 
 		if (csock->sk->sk_state != BT_CONNECTED || isock->sk->sk_state != BT_CONNECTED) {
-			fput(csock->file);
-			fput(isock->file);
+			sockfd_put(csock);
+			sockfd_put(isock);
 			return -EBADFD;
 		}
 
@@ -101,8 +96,8 @@ static int hidp_sock_ioctl(struct socket *sock, unsigned int cmd, unsigned long 
 			if (copy_to_user(argp, &ca, sizeof(ca)))
 				err = -EFAULT;
 		} else {
-			fput(csock->file);
-			fput(isock->file);
+			sockfd_put(csock);
+			sockfd_put(isock);
 		}
 
 		return err;
@@ -246,7 +241,7 @@ static struct proto hidp_proto = {
 	.obj_size	= sizeof(struct bt_sock)
 };
 
-static int hidp_sock_create(struct socket *sock, int protocol)
+static int hidp_sock_create(struct net *net, struct socket *sock, int protocol)
 {
 	struct sock *sk;
 
@@ -255,7 +250,7 @@ static int hidp_sock_create(struct socket *sock, int protocol)
 	if (sock->type != SOCK_RAW)
 		return -ESOCKTNOSUPPORT;
 
-	sk = sk_alloc(PF_BLUETOOTH, GFP_ATOMIC, &hidp_proto, 1);
+	sk = sk_alloc(net, PF_BLUETOOTH, GFP_ATOMIC, &hidp_proto);
 	if (!sk)
 		return -ENOMEM;
 

@@ -53,7 +53,7 @@ static const char* devname = "RISCom/N2";
 #define NEED_SCA_MSCI_INTR
 #define MAX_TX_BUFFERS 10
 
-static char *hw = NULL;	/* pointer to hw=xxx command line string */
+static char *hw;	/* pointer to hw=xxx command line string */
 
 /* RISCom/N2 Board Registers */
 
@@ -145,7 +145,6 @@ static card_t **new_card = &first_card;
 					 &(card)->ports[port] : NULL)
 
 
-
 static __inline__ u8 sca_get_page(card_t *card)
 {
 	return inb(card->io + N2_PSR) & PSR_PAGEBITS;
@@ -159,9 +158,7 @@ static __inline__ void openwin(card_t *card, u8 page)
 }
 
 
-
-#include "hd6457x.c"
-
+#include "hd64570.c"
 
 
 static void n2_set_iface(port_t *port)
@@ -351,12 +348,11 @@ static int __init n2_run(unsigned long io, unsigned long irq,
 		return -ENODEV;
 	}
 
-	card = kmalloc(sizeof(card_t), GFP_KERNEL);
+	card = kzalloc(sizeof(card_t), GFP_KERNEL);
 	if (card == NULL) {
 		printk(KERN_ERR "n2: unable to allocate memory\n");
 		return -ENOBUFS;
 	}
-	memset(card, 0, sizeof(card_t));
 
 	card->ports[0].dev = alloc_hdlcdev(&card->ports[0]);
 	card->ports[1].dev = alloc_hdlcdev(&card->ports[1]);
@@ -460,7 +456,6 @@ static int __init n2_run(unsigned long io, unsigned long irq,
 			port->log_node = 1;
 
 		spin_lock_init(&port->lock);
-		SET_MODULE_OWNER(dev);
 		dev->irq = irq;
 		dev->mem_start = winbase;
 		dev->mem_end = winbase + USE_WINDOWSIZE - 1;
@@ -480,7 +475,7 @@ static int __init n2_run(unsigned long io, unsigned long irq,
 			n2_destroy_card(card);
 			return -ENOBUFS;
 		}
-		sca_init_sync_port(port); /* Set up SCA memory */
+		sca_init_port(port); /* Set up SCA memory */
 
 		printk(KERN_INFO "%s: RISCom/N2 node %d\n",
 		       dev->name, port->phy_node);

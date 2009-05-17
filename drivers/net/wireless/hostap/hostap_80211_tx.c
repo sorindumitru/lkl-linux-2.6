@@ -40,10 +40,11 @@ void hostap_dump_tx_80211(const char *name, struct sk_buff *skb)
 	printk(" dur=0x%04x seq=0x%04x\n", le16_to_cpu(hdr->duration_id),
 	       le16_to_cpu(hdr->seq_ctl));
 
-	printk(KERN_DEBUG "   A1=" MACSTR " A2=" MACSTR " A3=" MACSTR,
-	       MAC2STR(hdr->addr1), MAC2STR(hdr->addr2), MAC2STR(hdr->addr3));
+	printk(KERN_DEBUG "   A1=%pM", hdr->addr1);
+	printk(" A2=%pM", hdr->addr2);
+	printk(" A3=%pM", hdr->addr3);
 	if (skb->len >= 30)
-		printk(" A4=" MACSTR, MAC2STR(hdr->addr4));
+		printk(" A4=%pM", hdr->addr4);
 	printk("\n");
 }
 
@@ -305,7 +306,7 @@ int hostap_mgmt_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 /* Called only from software IRQ */
 static struct sk_buff * hostap_tx_encrypt(struct sk_buff *skb,
-					  struct ieee80211_crypt_data *crypt)
+					  struct lib80211_crypt_data *crypt)
 {
 	struct hostap_interface *iface;
 	local_info_t *local;
@@ -326,8 +327,8 @@ static struct sk_buff * hostap_tx_encrypt(struct sk_buff *skb,
 		hdr = (struct ieee80211_hdr_4addr *) skb->data;
 		if (net_ratelimit()) {
 			printk(KERN_DEBUG "%s: TKIP countermeasures: dropped "
-			       "TX packet to " MACSTR "\n",
-			       local->dev->name, MAC2STR(hdr->addr1));
+			       "TX packet to %pM\n",
+			       local->dev->name, hdr->addr1);
 		}
 		kfree_skb(skb);
 		return NULL;
@@ -404,7 +405,7 @@ int hostap_master_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (local->host_encrypt) {
 		/* Set crypt to default algorithm and key; will be replaced in
 		 * AP code if STA has own alg/key */
-		tx.crypt = local->crypt[local->tx_keyidx];
+		tx.crypt = local->crypt_info.crypt[local->crypt_info.tx_keyidx];
 		tx.host_encrypt = 1;
 	} else {
 		tx.crypt = NULL;
@@ -486,7 +487,9 @@ int hostap_master_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	if (tx.crypt && (!tx.crypt->ops || !tx.crypt->ops->encrypt_mpdu))
 		tx.crypt = NULL;
-	else if ((tx.crypt || local->crypt[local->tx_keyidx]) && !no_encrypt) {
+	else if ((tx.crypt ||
+		 local->crypt_info.crypt[local->crypt_info.tx_keyidx]) &&
+		 !no_encrypt) {
 		/* Add ISWEP flag both for firmware and host based encryption
 		 */
 		fc |= IEEE80211_FCTL_PROTECTED;

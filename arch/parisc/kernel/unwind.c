@@ -170,7 +170,7 @@ void unwind_table_remove(struct unwind_table *table)
 }
 
 /* Called from setup_arch to import the kernel unwind info */
-static int unwind_init(void)
+int unwind_init(void)
 {
 	long start, stop;
 	register unsigned long gp __asm__ ("r27");
@@ -209,8 +209,8 @@ static int unwind_init(void)
 
 static int unwind_special(struct unwind_frame_info *info, unsigned long pc, int frame_size)
 {
-	void handle_interruption(int, struct pt_regs *);
-	static unsigned long *hi = (unsigned long)&handle_interruption;
+	extern void handle_interruption(int, struct pt_regs *);
+	static unsigned long *hi = (unsigned long *)&handle_interruption;
 
 	if (pc == get_func_addr(hi)) {
 		struct pt_regs *regs = (struct pt_regs *)(info->sp - frame_size - PT_SZ_ALGN);
@@ -242,7 +242,7 @@ static void unwind_frame_regs(struct unwind_frame_info *info)
 #ifdef CONFIG_KALLSYMS
 		/* Handle some frequent special cases.... */
 		{
-			char symname[KSYM_NAME_LEN+1];
+			char symname[KSYM_NAME_LEN];
 			char *modname;
 
 			kallsyms_lookup(info->ip, NULL, NULL, &modname,
@@ -372,7 +372,7 @@ void unwind_frame_init_from_blocked_task(struct unwind_frame_info *info, struct 
 	struct pt_regs *r = &t->thread.regs;
 	struct pt_regs *r2;
 
-	r2 = kmalloc(sizeof(struct pt_regs), GFP_KERNEL);
+	r2 = kmalloc(sizeof(struct pt_regs), GFP_ATOMIC);
 	if (!r2)
 		return;
 	*r2 = *r;
@@ -417,5 +417,3 @@ int unwind_to_user(struct unwind_frame_info *info)
 
 	return ret;
 }
-
-module_init(unwind_init);

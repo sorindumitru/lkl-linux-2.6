@@ -23,25 +23,20 @@ static inline struct cfg80211_registered_device *dev_to_rdev(
 	return container_of(dev, struct cfg80211_registered_device, wiphy.dev);
 }
 
-static ssize_t _show_index(struct device *dev, struct device_attribute *attr,
-			   char *buf)
-{
-	return sprintf(buf, "%d\n", dev_to_rdev(dev)->idx);
+#define SHOW_FMT(name, fmt, member)					\
+static ssize_t name ## _show(struct device *dev,			\
+			      struct device_attribute *attr,		\
+			      char *buf)				\
+{									\
+	return sprintf(buf, fmt "\n", dev_to_rdev(dev)->member);	\
 }
 
-static ssize_t _show_permaddr(struct device *dev,
-			      struct device_attribute *attr,
-			      char *buf)
-{
-	unsigned char *addr = dev_to_rdev(dev)->wiphy.perm_addr;
-
-	return sprintf(buf, "%.2x:%.2x:%.2x:%.2x:%.2x:%.2x\n",
-		       addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
-}
+SHOW_FMT(index, "%d", idx);
+SHOW_FMT(macaddress, "%pM", wiphy.perm_addr);
 
 static struct device_attribute ieee80211_dev_attrs[] = {
-	__ATTR(index, S_IRUGO, _show_index, NULL),
-	__ATTR(macaddress, S_IRUGO, _show_permaddr, NULL),
+	__ATTR_RO(index),
+	__ATTR_RO(macaddress),
 	{}
 };
 
@@ -52,12 +47,13 @@ static void wiphy_dev_release(struct device *dev)
 	cfg80211_dev_free(rdev);
 }
 
-static int wiphy_uevent(struct device *dev, char **envp,
-			int num_envp, char *buf, int size)
+#ifdef CONFIG_HOTPLUG
+static int wiphy_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
 	/* TODO, we probably need stuff here */
 	return 0;
 }
+#endif
 
 struct class ieee80211_class = {
 	.name = "ieee80211",

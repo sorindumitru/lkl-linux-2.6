@@ -132,8 +132,6 @@ struct net_device * __init ultra32_probe(int unit)
 		netdev_boot_setup_check(dev);
 	}
 
-	SET_MODULE_OWNER(dev);
-
 	irq = dev->irq;
 
 	/* EISA spec allows for up to 16 slots, but 8 is typical. */
@@ -205,10 +203,11 @@ static int __init ultra32_probe1(struct net_device *dev, int ioaddr)
 
 	model_name = "SMC Ultra32";
 
-	printk("%s: %s at 0x%X,", dev->name, model_name, ioaddr);
-
 	for (i = 0; i < 6; i++)
-		printk(" %2.2X", dev->dev_addr[i] = inb(ioaddr + 8 + i));
+		dev->dev_addr[i] = inb(ioaddr + 8 + i);
+
+	printk("%s: %s at 0x%X, %pM",
+	       dev->name, model_name, ioaddr, dev->dev_addr);
 
 	/* Switch from the station address to the alternate register set and
 	   read the useful registers there. */

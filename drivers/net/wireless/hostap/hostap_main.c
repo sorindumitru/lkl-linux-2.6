@@ -24,9 +24,10 @@
 #include <linux/rtnetlink.h>
 #include <linux/wireless.h>
 #include <linux/etherdevice.h>
+#include <net/net_namespace.h>
 #include <net/iw_handler.h>
 #include <net/ieee80211.h>
-#include <net/ieee80211_crypt.h>
+#include <net/lib80211.h>
 #include <asm/uaccess.h>
 
 #include "hostap_wlan.h"
@@ -37,7 +38,6 @@
 MODULE_AUTHOR("Jouni Malinen");
 MODULE_DESCRIPTION("Host AP common routines");
 MODULE_LICENSE("GPL");
-MODULE_VERSION(PRISM2_VERSION);
 
 #define TX_TIMEOUT (2 * HZ)
 
@@ -73,7 +73,7 @@ struct net_device * hostap_add_interface(struct local_info *local,
 	dev->mem_start = mdev->mem_start;
 	dev->mem_end = mdev->mem_end;
 
-	hostap_setup_dev(dev, local, 0);
+	hostap_setup_dev(dev, local, type);
 	dev->destructor = free_netdev;
 
 	sprintf(dev->name, "%s%s", prefix, name);
@@ -296,7 +296,7 @@ int hostap_tx_callback_unregister(local_info_t *local, u16 idx)
 int hostap_set_word(struct net_device *dev, int rid, u16 val)
 {
 	struct hostap_interface *iface;
-	u16 tmp = cpu_to_le16(val);
+	__le16 tmp = cpu_to_le16(val);
 	iface = netdev_priv(dev);
 	return iface->local->func->set_rid(dev, rid, &tmp, 2);
 }
@@ -343,10 +343,11 @@ int hostap_set_encryption(local_info_t *local)
 	char keybuf[WEP_KEY_LEN + 1];
 	enum { NONE, WEP, OTHER } encrypt_type;
 
-	idx = local->tx_keyidx;
-	if (local->crypt[idx] == NULL || local->crypt[idx]->ops == NULL)
+	idx = local->crypt_info.tx_keyidx;
+	if (local->crypt_info.crypt[idx] == NULL ||
+	    local->crypt_info.crypt[idx]->ops == NULL)
 		encrypt_type = NONE;
-	else if (strcmp(local->crypt[idx]->ops->name, "WEP") == 0)
+	else if (strcmp(local->crypt_info.crypt[idx]->ops->name, "WEP") == 0)
 		encrypt_type = WEP;
 	else
 		encrypt_type = OTHER;
@@ -394,17 +395,17 @@ int hostap_set_encryption(local_info_t *local)
 	/* 104-bit support seems to require that all the keys are set to the
 	 * same keylen */
 	keylen = 6; /* first 5 octets */
-	len = local->crypt[idx]->ops->get_key(keybuf, sizeof(keybuf),
-					      NULL, local->crypt[idx]->priv);
+	len = local->crypt_info.crypt[idx]->ops->get_key(keybuf, sizeof(keybuf), NULL,
+							   local->crypt_info.crypt[idx]->priv);
 	if (idx >= 0 && idx < WEP_KEYS && len > 5)
 		keylen = WEP_KEY_LEN + 1; /* first 13 octets */
 
 	for (i = 0; i < WEP_KEYS; i++) {
 		memset(keybuf, 0, sizeof(keybuf));
-		if (local->crypt[i]) {
-			(void) local->crypt[i]->ops->get_key(
+		if (local->crypt_info.crypt[i]) {
+			(void) local->crypt_info.crypt[i]->ops->get_key(
 				keybuf, sizeof(keybuf),
-				NULL, local->crypt[i]->priv);
+				NULL, local->crypt_info.crypt[i]->priv);
 		}
 		if (local->func->set_rid(local->dev,
 					 HFA384X_RID_CNFDEFAULTKEY0 + i,
@@ -548,13 +549,11 @@ void hostap_dump_rx_header(const char *name, const struct hfa384x_rx_frame *rx)
 	       fc & IEEE80211_FCTL_TODS ? " [ToDS]" : "",
 	       fc & IEEE80211_FCTL_FROMDS ? " [FromDS]" : "");
 
-	printk(KERN_DEBUG "   A1=" MACSTR " A2=" MACSTR " A3=" MACSTR " A4="
-	       MACSTR "\n",
-	       MAC2STR(rx->addr1), MAC2STR(rx->addr2), MAC2STR(rx->addr3),
-	       MAC2STR(rx->addr4));
+	printk(KERN_DEBUG "   A1=%pM A2=%pM A3=%pM A4=%pM\n",
+	       rx->addr1, rx->addr2, rx->addr3, rx->addr4);
 
-	printk(KERN_DEBUG "   dst=" MACSTR " src=" MACSTR " len=%d\n",
-	       MAC2STR(rx->dst_addr), MAC2STR(rx->src_addr),
+	printk(KERN_DEBUG "   dst=%pM src=%pM len=%d\n",
+	       rx->dst_addr, rx->src_addr,
 	       __be16_to_cpu(rx->len));
 }
 
@@ -577,35 +576,19 @@ void hostap_dump_tx_header(const char *name, const struct hfa384x_tx_frame *tx)
 	       fc & IEEE80211_FCTL_TODS ? " [ToDS]" : "",
 	       fc & IEEE80211_FCTL_FROMDS ? " [FromDS]" : "");
 
-	printk(KERN_DEBUG "   A1=" MACSTR " A2=" MACSTR " A3=" MACSTR " A4="
-	       MACSTR "\n",
-	       MAC2STR(tx->addr1), MAC2STR(tx->addr2), MAC2STR(tx->addr3),
-	       MAC2STR(tx->addr4));
+	printk(KERN_DEBUG "   A1=%pM A2=%pM A3=%pM A4=%pM\n",
+	       tx->addr1, tx->addr2, tx->addr3, tx->addr4);
 
-	printk(KERN_DEBUG "   dst=" MACSTR " src=" MACSTR " len=%d\n",
-	       MAC2STR(tx->dst_addr), MAC2STR(tx->src_addr),
+	printk(KERN_DEBUG "   dst=%pM src=%pM len=%d\n",
+	       tx->dst_addr, tx->src_addr,
 	       __be16_to_cpu(tx->len));
 }
 
 
-int hostap_80211_header_parse(struct sk_buff *skb, unsigned char *haddr)
+static int hostap_80211_header_parse(const struct sk_buff *skb,
+				     unsigned char *haddr)
 {
 	memcpy(haddr, skb_mac_header(skb) + 10, ETH_ALEN); /* addr2 */
-	return ETH_ALEN;
-}
-
-
-int hostap_80211_prism_header_parse(struct sk_buff *skb, unsigned char *haddr)
-{
-	const unsigned char *mac = skb_mac_header(skb);
-
-	if (*(u32 *)mac == LWNG_CAP_DID_BASE) {
-		memcpy(haddr, mac + sizeof(struct linux_wlan_ng_prism_hdr) + 10,
-		       ETH_ALEN); /* addr2 */
-	} else { /* (*(u32 *)mac == htonl(LWNG_CAPHDR_VERSION)) */
-		memcpy(haddr, mac + sizeof(struct linux_wlan_ng_cap_hdr) + 10,
-		       ETH_ALEN); /* addr2 */
-	}
 	return ETH_ALEN;
 }
 
@@ -673,7 +656,13 @@ static int prism2_close(struct net_device *dev)
 		netif_device_detach(dev);
 	}
 
-	flush_scheduled_work();
+	cancel_work_sync(&local->reset_queue);
+	cancel_work_sync(&local->set_multicast_list_queue);
+	cancel_work_sync(&local->set_tim_queue);
+#ifndef PRISM2_NO_STATION_MODES
+	cancel_work_sync(&local->info_queue);
+#endif
+	cancel_work_sync(&local->comms_qual_update);
 
 	module_put(local->hw_module);
 
@@ -837,9 +826,17 @@ static void prism2_tx_timeout(struct net_device *dev)
 	local->func->schedule_reset(local);
 }
 
+const struct header_ops hostap_80211_ops = {
+	.create		= eth_header,
+	.rebuild	= eth_rebuild_header,
+	.cache		= eth_header_cache,
+	.cache_update	= eth_header_cache_update,
+	.parse		= hostap_80211_header_parse,
+};
+EXPORT_SYMBOL(hostap_80211_ops);
 
 void hostap_setup_dev(struct net_device *dev, local_info_t *local,
-		      int main_dev)
+		      int type)
 {
 	struct hostap_interface *iface;
 
@@ -859,15 +856,22 @@ void hostap_setup_dev(struct net_device *dev, local_info_t *local,
 	dev->do_ioctl = hostap_ioctl;
 	dev->open = prism2_open;
 	dev->stop = prism2_close;
-	dev->hard_start_xmit = hostap_data_start_xmit;
 	dev->set_mac_address = prism2_set_mac_address;
 	dev->set_multicast_list = hostap_set_multicast_list;
 	dev->change_mtu = prism2_change_mtu;
 	dev->tx_timeout = prism2_tx_timeout;
 	dev->watchdog_timeo = TX_TIMEOUT;
 
+	if (type == HOSTAP_INTERFACE_AP) {
+		dev->hard_start_xmit = hostap_mgmt_start_xmit;
+		dev->type = ARPHRD_IEEE80211;
+		dev->header_ops = &hostap_80211_ops;
+	} else {
+		dev->hard_start_xmit = hostap_data_start_xmit;
+	}
+
 	dev->mtu = local->mtu;
-	if (!main_dev) {
+	if (type != HOSTAP_INTERFACE_MASTER) {
 		/* use main radio device queue */
 		dev->tx_queue_len = 0;
 	}
@@ -876,7 +880,6 @@ void hostap_setup_dev(struct net_device *dev, local_info_t *local,
 
 	netif_stop_queue(dev);
 }
-
 
 static int hostap_enable_hostapd(local_info_t *local, int rtnl_locked)
 {
@@ -892,10 +895,6 @@ static int hostap_enable_hostapd(local_info_t *local, int rtnl_locked)
 					    "ap");
 	if (local->apdev == NULL)
 		return -ENOMEM;
-
-	local->apdev->hard_start_xmit = hostap_mgmt_start_xmit;
-	local->apdev->type = ARPHRD_IEEE80211;
-	local->apdev->hard_header_parse = hostap_80211_header_parse;
 
 	return 0;
 }
@@ -1075,15 +1074,15 @@ int prism2_sta_deauth(local_info_t *local, u16 reason)
 {
 	union iwreq_data wrqu;
 	int ret;
+	__le16 val = cpu_to_le16(reason);
 
 	if (local->iw_mode != IW_MODE_INFRA ||
 	    memcmp(local->bssid, "\x00\x00\x00\x00\x00\x00", ETH_ALEN) == 0 ||
 	    memcmp(local->bssid, "\x44\x44\x44\x44\x44\x44", ETH_ALEN) == 0)
 		return 0;
 
-	reason = cpu_to_le16(reason);
 	ret = prism2_sta_send_mgmt(local, local->bssid, IEEE80211_STYPE_DEAUTH,
-				   (u8 *) &reason, 2);
+				   (u8 *) &val, 2);
 	memset(wrqu.ap_addr.sa_data, 0, ETH_ALEN);
 	wireless_send_event(local->dev, SIOCGIWAP, &wrqu, NULL);
 	return ret;
@@ -1094,8 +1093,8 @@ struct proc_dir_entry *hostap_proc;
 
 static int __init hostap_init(void)
 {
-	if (proc_net != NULL) {
-		hostap_proc = proc_mkdir("hostap", proc_net);
+	if (init_net.proc_net != NULL) {
+		hostap_proc = proc_mkdir("hostap", init_net.proc_net);
 		if (!hostap_proc)
 			printk(KERN_WARNING "Failed to mkdir "
 			       "/proc/net/hostap\n");
@@ -1110,7 +1109,7 @@ static void __exit hostap_exit(void)
 {
 	if (hostap_proc != NULL) {
 		hostap_proc = NULL;
-		remove_proc_entry("hostap", proc_net);
+		remove_proc_entry("hostap", init_net.proc_net);
 	}
 }
 
@@ -1124,7 +1123,6 @@ EXPORT_SYMBOL(hostap_set_roaming);
 EXPORT_SYMBOL(hostap_set_auth_algs);
 EXPORT_SYMBOL(hostap_dump_rx_header);
 EXPORT_SYMBOL(hostap_dump_tx_header);
-EXPORT_SYMBOL(hostap_80211_header_parse);
 EXPORT_SYMBOL(hostap_80211_get_hdrlen);
 EXPORT_SYMBOL(hostap_get_stats);
 EXPORT_SYMBOL(hostap_setup_dev);

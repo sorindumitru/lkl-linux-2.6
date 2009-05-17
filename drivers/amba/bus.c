@@ -12,9 +12,10 @@
 #include <linux/device.h>
 #include <linux/string.h>
 #include <linux/slab.h>
+#include <linux/io.h>
 #include <linux/amba/bus.h>
 
-#include <asm/io.h>
+#include <asm/irq.h>
 #include <asm/sizes.h>
 
 #define to_amba_device(d)	container_of(d, struct amba_device, dev)
@@ -44,15 +45,12 @@ static int amba_match(struct device *dev, struct device_driver *drv)
 }
 
 #ifdef CONFIG_HOTPLUG
-static int amba_uevent(struct device *dev, char **envp, int nr_env, char *buf, int bufsz)
+static int amba_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
 	struct amba_device *pcdev = to_amba_device(dev);
-	int retval = 0, i = 0, len = 0;
+	int retval = 0;
 
-	retval = add_uevent_var(envp, nr_env, &i,
-				buf, bufsz, &len,
-				"AMBA_ID=%08x", pcdev->periphid);
-	envp[i] = NULL;
+	retval = add_uevent_var(env, "AMBA_ID=%08x", pcdev->periphid);
 	return retval;
 }
 #else

@@ -3,8 +3,6 @@
  *
  *  Copyright (C) 2001 Russell King
  *
- *  $Id: cpu-sa1110.c,v 1.9 2002/07/06 16:53:18 rmk Exp $
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
@@ -25,10 +23,11 @@
 #include <linux/cpufreq.h>
 #include <linux/delay.h>
 #include <linux/init.h>
+#include <linux/io.h>
 
-#include <asm/hardware.h>
+#include <mach/hardware.h>
+#include <asm/cputype.h>
 #include <asm/mach-types.h>
-#include <asm/io.h>
 #include <asm/system.h>
 
 #include "generic.h"
@@ -82,14 +81,14 @@ static struct sdram_params sdram_tbl[] __initdata = {
 		.twr		= 9,
 		.refresh	= 64000,
 		.cas_latency	= 3,
-	}, {    /* Samsung K4S281632B-1H */
-	        .name           = "K4S281632B-1H",
-		.rows           = 12,
-		.tck            = 10,
-		.trp            = 20,
-		.twr            = 10,
-		.refresh        = 64000,
-		.cas_latency    = 3,
+	}, {	/* Samsung K4S281632B-1H */
+		.name           = "K4S281632B-1H",
+		.rows		= 12,
+		.tck		= 10,
+		.trp		= 20,
+		.twr		= 10,
+		.refresh	= 64000,
+		.cas_latency	= 3,
 	}, {	/* Samsung KM416S4030CT */
 		.name		= "KM416S4030CT",
 		.rows		= 13,
@@ -221,7 +220,7 @@ sdram_update_refresh(u_int cpu_khz, struct sdram_params *sdram)
 }
 
 /*
- * Ok, set the CPU frequency.  
+ * Ok, set the CPU frequency.
  */
 static int sa1110_target(struct cpufreq_policy *policy,
 			 unsigned int target_freq,
@@ -331,7 +330,6 @@ static int __init sa1110_cpu_init(struct cpufreq_policy *policy)
 	if (policy->cpu != 0)
 		return -EINVAL;
 	policy->cur = policy->min = policy->max = sa11x0_getspeed(0);
-	policy->governor = CPUFREQ_DEFAULT_GOVERNOR;
 	policy->cpuinfo.min_freq = 59000;
 	policy->cpuinfo.max_freq = 287000;
 	policy->cpuinfo.transition_latency = CPUFREQ_ETERNAL;

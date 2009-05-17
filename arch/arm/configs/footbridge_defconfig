@@ -748,7 +748,6 @@ CONFIG_I2C=m
 # CONFIG_I2C_ELEKTOR is not set
 # CONFIG_I2C_I801 is not set
 # CONFIG_I2C_I810 is not set
-# CONFIG_I2C_ISA is not set
 # CONFIG_I2C_NFORCE2 is not set
 # CONFIG_I2C_PARPORT is not set
 # CONFIG_I2C_PARPORT_LIGHT is not set
@@ -802,7 +801,7 @@ CONFIG_I2C=m
 #
 # Other I2C Chip support
 #
-# CONFIG_SENSORS_EEPROM is not set
+# CONFIG_EEPROM_LEGACY is not set
 # CONFIG_SENSORS_PCF8574 is not set
 # CONFIG_SENSORS_PCF8591 is not set
 # CONFIG_SENSORS_RTC8564 is not set

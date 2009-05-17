@@ -24,6 +24,7 @@
 #include <linux/amba/bus.h>
 #include <linux/amba/clcd.h>
 #include <linux/clk.h>
+#include <linux/hardirq.h>
 
 #include <asm/sizes.h>
 
@@ -343,14 +344,14 @@ static int clcdfb_register(struct clcd_fb *fb)
 {
 	int ret;
 
-	fb->clk = clk_get(&fb->dev->dev, "CLCDCLK");
+	fb->clk = clk_get(&fb->dev->dev, NULL);
 	if (IS_ERR(fb->clk)) {
 		ret = PTR_ERR(fb->clk);
 		goto out;
 	}
 
 	fb->fb.fix.mmio_start	= fb->dev->res.start;
-	fb->fb.fix.mmio_len	= SZ_4K;
+	fb->fb.fix.mmio_len	= 4096;
 
 	fb->regs = ioremap(fb->fb.fix.mmio_start, fb->fb.fix.mmio_len);
 	if (!fb->regs) {
@@ -447,13 +448,12 @@ static int clcdfb_probe(struct amba_device *dev, void *id)
 		goto out;
 	}
 
-	fb = kmalloc(sizeof(struct clcd_fb), GFP_KERNEL);
+	fb = kzalloc(sizeof(struct clcd_fb), GFP_KERNEL);
 	if (!fb) {
 		printk(KERN_INFO "CLCD: could not allocate new clcd_fb struct\n");
 		ret = -ENOMEM;
 		goto free_region;
 	}
-	memset(fb, 0, sizeof(struct clcd_fb));
 
 	fb->dev = dev;
 	fb->board = board;

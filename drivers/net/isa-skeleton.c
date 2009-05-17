@@ -133,8 +133,6 @@ static int __init do_netcard_probe(struct net_device *dev)
 	int base_addr = dev->base_addr;
 	int irq = dev->irq;
 
-	SET_MODULE_OWNER(dev);
-
 	if (base_addr > 0x1ff)    /* Check a single specified location. */
 		return netcard_probe1(dev, base_addr);
 	else if (base_addr != 0)  /* Don't probe at all. */
@@ -219,7 +217,9 @@ static int __init netcard_probe1(struct net_device *dev, int ioaddr)
 
 	/* Retrieve and print the ethernet address. */
 	for (i = 0; i < 6; i++)
-		printk(" %2.2x", dev->dev_addr[i] = inb(ioaddr + i));
+		dev->dev_addr[i] = inb(ioaddr + i);
+
+	printk("%pM", dev->dev_addr);
 
 	err = -EAGAIN;
 #ifdef jumpered_interrupts
@@ -583,7 +583,6 @@ net_rx(struct net_device *dev)
 			insw(ioaddr, skb->data, (pkt_len + 1) >> 1);
 
 			netif_rx(skb);
-			dev->last_rx = jiffies;
 			lp->stats.rx_packets++;
 			lp->stats.rx_bytes += pkt_len;
 		}
@@ -710,15 +709,3 @@ cleanup_module(void)
 }
 
 #endif /* MODULE */
-
-/*
- * Local variables:
- *  compile-command:
- *	gcc -D__KERNEL__ -Wall -Wstrict-prototypes -Wwrite-strings
- *	-Wredundant-decls -O2 -m486 -c skeleton.c
- *  version-control: t
- *  kept-new-versions: 5
- *  tab-width: 4
- *  c-indent-level: 4
- * End:
- */

@@ -26,7 +26,6 @@
 #include <linux/acpi.h>
 #include <asm/sn/sn2/sn_hwperf.h>
 #include <asm/sn/acpi.h>
-#include "acpi/acglobal.h"
 
 extern void sn_init_cpei_timer(void);
 extern void register_sn_procfs(void);
@@ -347,7 +346,7 @@ sn_common_bus_fixup(struct pci_bus *bus,
 	if (controller->node >= num_online_nodes()) {
 		struct pcibus_bussoft *b = SN_PCIBUS_BUSSOFT(bus);
 
-		printk(KERN_WARNING "Device ASIC=%u XID=%u PBUSNUM=%u"
+		printk(KERN_WARNING "Device ASIC=%u XID=%u PBUSNUM=%u "
 		       "L_IO=%lx L_MEM=%lx BASE=%lx\n",
 		       b->bs_asic_type, b->bs_xid, b->bs_persist_busnum,
 		       b->bs_legacy_io, b->bs_legacy_mem, b->bs_base);
@@ -364,7 +363,7 @@ void sn_bus_store_sysdata(struct pci_dev *dev)
 
 	element = kzalloc(sizeof(struct sysdata_el), GFP_KERNEL);
 	if (!element) {
-		dev_dbg(&dev->dev, "%s: out of memory!\n", __FUNCTION__);
+		dev_dbg(&dev->dev, "%s: out of memory!\n", __func__);
 		return;
 	}
 	element->sysdata = SN_PCIDEV_INFO(dev);
@@ -391,7 +390,7 @@ void sn_bus_free_sysdata(void)
  * hubdev_init_node() - Creates the HUB data structure and link them to it's
  *			own NODE specific data area.
  */
-void hubdev_init_node(nodepda_t * npda, cnodeid_t node)
+void __init hubdev_init_node(nodepda_t * npda, cnodeid_t node)
 {
 	struct hubdev_info *hubdev_info;
 	int size;
@@ -473,7 +472,7 @@ sn_io_early_init(void)
 	{
 		struct acpi_table_header *header = NULL;
 
-		acpi_get_table_by_index(ACPI_TABLE_INDEX_DSDT, &header);
+		acpi_get_table(ACPI_SIG_DSDT, 1, &header);
 		BUG_ON(header == NULL);
 		sn_acpi_rev = header->oem_revision;
 	}
@@ -505,7 +504,7 @@ sn_io_early_init(void)
 
 	{
 		struct acpi_table_header *header;
-		(void)acpi_get_table_by_index(ACPI_TABLE_INDEX_DSDT, &header);
+		(void)acpi_get_table(ACPI_SIG_DSDT, 1, &header);
 		printk(KERN_INFO "ACPI  DSDT OEM Rev 0x%x\n",
 			header->oem_revision);
 	}
@@ -545,19 +544,18 @@ sn_io_late_init(void)
 		nasid = NASID_GET(bussoft->bs_base);
 		cnode = nasid_to_cnodeid(nasid);
 		if ((bussoft->bs_asic_type == PCIIO_ASIC_TYPE_TIOCP) ||
-		    (bussoft->bs_asic_type == PCIIO_ASIC_TYPE_TIOCE)) {
-			/* TIO PCI Bridge: find nearest node with CPUs */
+		    (bussoft->bs_asic_type == PCIIO_ASIC_TYPE_TIOCE) ||
+		    (bussoft->bs_asic_type == PCIIO_ASIC_TYPE_PIC)) {
+			/* PCI Bridge: find nearest node with CPUs */
 			int e = sn_hwperf_get_nearest_node(cnode, NULL,
 							   &near_cnode);
 			if (e < 0) {
 				near_cnode = (cnodeid_t)-1; /* use any node */
-				printk(KERN_WARNING "pcibr_bus_fixup: failed "
-				       "to find near node with CPUs to TIO "
+				printk(KERN_WARNING "sn_io_late_init: failed "
+				       "to find near node with CPUs for "
 				       "node %d, err=%d\n", cnode, e);
 			}
 			PCI_CONTROLLER(bus)->node = near_cnode;
-		} else if (bussoft->bs_asic_type == PCIIO_ASIC_TYPE_PIC) {
-			PCI_CONTROLLER(bus)->node = cnode;
 		}
 	}
 

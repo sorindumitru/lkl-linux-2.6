@@ -28,6 +28,7 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/slab.h>
+#include <linux/smp_lock.h>
 #include <linux/types.h>
 #include <linux/errno.h>
 #include <linux/sched.h>
@@ -38,11 +39,6 @@
 
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
-
-#ifndef CONFIG_BT_HCIVHCI_DEBUG
-#undef  BT_DBG
-#define BT_DBG(D...)
-#endif
 
 #define VERSION "1.2"
 
@@ -180,11 +176,6 @@ static inline ssize_t vhci_put_user(struct vhci_data *data,
 	return total;
 }
 
-static loff_t vhci_llseek(struct file *file, loff_t offset, int origin)
-{
-	return -ESPIPE;
-}
-
 static ssize_t vhci_read(struct file *file,
 				char __user *buf, size_t count, loff_t *pos)
 {
@@ -268,9 +259,11 @@ static int vhci_open(struct inode *inode, struct file *file)
 	skb_queue_head_init(&data->readq);
 	init_waitqueue_head(&data->read_wait);
 
+	lock_kernel();
 	hdev = hci_alloc_dev();
 	if (!hdev) {
 		kfree(data);
+		unlock_kernel();
 		return -ENOMEM;
 	}
 
@@ -291,10 +284,12 @@ static int vhci_open(struct inode *inode, struct file *file)
 		BT_ERR("Can't register HCI device");
 		kfree(data);
 		hci_free_dev(hdev);
+		unlock_kernel();
 		return -EBUSY;
 	}
 
 	file->private_data = data;
+	unlock_kernel();
 
 	return nonseekable_open(inode, file);
 }
@@ -318,23 +313,25 @@ static int vhci_release(struct inode *inode, struct file *file)
 static int vhci_fasync(int fd, struct file *file, int on)
 {
 	struct vhci_data *data = file->private_data;
-	int err;
+	int err = 0;
 
+	lock_kernel();
 	err = fasync_helper(fd, file, on, &data->fasync);
 	if (err < 0)
-		return err;
+		goto out;
 
 	if (on)
 		data->flags |= VHCI_FASYNC;
 	else
 		data->flags &= ~VHCI_FASYNC;
 
-	return 0;
+out:
+	unlock_kernel();
+	return err;
 }
 
 static const struct file_operations vhci_fops = {
 	.owner		= THIS_MODULE,
-	.llseek		= vhci_llseek,
 	.read		= vhci_read,
 	.write		= vhci_write,
 	.poll		= vhci_poll,
@@ -375,7 +372,7 @@ module_exit(vhci_exit);
 module_param(minor, int, 0444);
 MODULE_PARM_DESC(minor, "Miscellaneous minor device number");
 
-MODULE_AUTHOR("Maxim Krasnyansky <maxk@qualcomm.com>, Marcel Holtmann <marcel@holtmann.org>");
+MODULE_AUTHOR("Marcel Holtmann <marcel@holtmann.org>");
 MODULE_DESCRIPTION("Bluetooth virtual HCI driver ver " VERSION);
 MODULE_VERSION(VERSION);
 MODULE_LICENSE("GPL");

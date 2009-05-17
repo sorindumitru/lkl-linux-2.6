@@ -113,6 +113,9 @@ static const struct proto_ops pvc_proto_ops = {
 	.getname =	pvc_getname,
 	.poll =		vcc_poll,
 	.ioctl =	vcc_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = vcc_compat_ioctl,
+#endif
 	.listen =	sock_no_listen,
 	.shutdown =	pvc_shutdown,
 	.setsockopt =	pvc_setsockopt,
@@ -124,10 +127,13 @@ static const struct proto_ops pvc_proto_ops = {
 };
 
 
-static int pvc_create(struct socket *sock,int protocol)
+static int pvc_create(struct net *net, struct socket *sock,int protocol)
 {
+	if (net != &init_net)
+		return -EAFNOSUPPORT;
+
 	sock->ops = &pvc_proto_ops;
-	return vcc_create(sock, protocol, PF_ATMPVC);
+	return vcc_create(net, sock, protocol, PF_ATMPVC);
 }
 
 

@@ -124,9 +124,8 @@ static void cn_test_timer_func(unsigned long __data)
 	struct cn_msg *m;
 	char data[32];
 
-	m = kmalloc(sizeof(*m) + sizeof(data), GFP_ATOMIC);
+	m = kzalloc(sizeof(*m) + sizeof(data), GFP_ATOMIC);
 	if (m) {
-		memset(m, 0, sizeof(*m) + sizeof(data));
 
 		memcpy(&m->id, &cn_test_id, sizeof(m->id));
 		m->seq = cn_test_timer_counter;
@@ -138,7 +137,7 @@ static void cn_test_timer_func(unsigned long __data)
 
 		memcpy(m + 1, data, m->len);
 
-		cn_netlink_send(m, 0, gfp_any());
+		cn_netlink_send(m, 0, GFP_ATOMIC);
 		kfree(m);
 	}
 
@@ -161,10 +160,8 @@ static int cn_test_init(void)
 		goto err_out;
 	}
 
-	init_timer(&cn_test_timer);
-	cn_test_timer.function = cn_test_timer_func;
+	setup_timer(&cn_test_timer, cn_test_timer_func, 0);
 	cn_test_timer.expires = jiffies + HZ;
-	cn_test_timer.data = 0;
 	add_timer(&cn_test_timer);
 
 	return 0;

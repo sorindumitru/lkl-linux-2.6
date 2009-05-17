@@ -88,6 +88,7 @@
 static inline void append_crc_ccitt(unsigned char *buffer, int len)
 {
  	unsigned int crc = crc_ccitt(0xffff, buffer, len) ^ 0xffff;
+	buffer += len;
 	*buffer++ = crc;
 	*buffer++ = crc >> 8;
 }
@@ -161,7 +162,6 @@ static void hdlc_rx_flag(struct net_device *dev, struct hdlcdrv_state *s)
 	memcpy(cp, s->hdlcrx.buffer, pkt_len - 1);
 	skb->protocol = ax25_type_trans(skb, dev);
 	netif_rx(skb);
-	dev->last_rx = jiffies;
 	s->stats.rx_packets++;
 }
 
@@ -682,8 +682,7 @@ static void hdlcdrv_setup(struct net_device *dev)
 
 	s->skb = NULL;
 	
-	dev->hard_header = ax25_hard_header;
-	dev->rebuild_header = ax25_rebuild_header;
+	dev->header_ops = &ax25_header_ops;
 	dev->set_mac_address = hdlcdrv_set_mac_address;
 	
 	dev->type = ARPHRD_AX25;           /* AF_AX25 device */

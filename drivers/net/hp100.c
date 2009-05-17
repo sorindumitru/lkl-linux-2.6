@@ -8,7 +8,7 @@
 ** Extended for new busmaster capable chipsets by
 ** Siegfried "Frieder" Loeffler (dg1sek) <floeff@mathematik.uni-stuttgart.de>
 **
-** Maintained by: Jaroslav Kysela <perex@suse.cz>
+** Maintained by: Jaroslav Kysela <perex@perex.cz>
 **
 ** This driver has only been tested with
 ** -- HP J2585B 10/100 Mbit/s PCI Busmaster
@@ -404,8 +404,6 @@ struct net_device * __init hp100_probe(int unit)
 	if (!dev)
 		return ERR_PTR(-ENODEV);
 
-	SET_MODULE_OWNER(dev);
-
 #ifdef HP100_DEBUG_B
 	hp100_outw(0x4200, TRACE);
 	printk("hp100: %s: probe\n", dev->name);
@@ -426,6 +424,28 @@ struct net_device * __init hp100_probe(int unit)
 	return ERR_PTR(err);
 }
 #endif /* !MODULE && CONFIG_ISA */
+
+static const struct net_device_ops hp100_bm_netdev_ops = {
+	.ndo_open		= hp100_open,
+	.ndo_stop		= hp100_close,
+	.ndo_start_xmit		= hp100_start_xmit_bm,
+	.ndo_get_stats 		= hp100_get_stats,
+	.ndo_set_multicast_list = hp100_set_multicast_list,
+	.ndo_change_mtu		= eth_change_mtu,
+	.ndo_set_mac_address 	= eth_mac_addr,
+	.ndo_validate_addr	= eth_validate_addr,
+};
+
+static const struct net_device_ops hp100_netdev_ops = {
+	.ndo_open		= hp100_open,
+	.ndo_stop		= hp100_close,
+	.ndo_start_xmit		= hp100_start_xmit,
+	.ndo_get_stats 		= hp100_get_stats,
+	.ndo_set_multicast_list = hp100_set_multicast_list,
+	.ndo_change_mtu		= eth_change_mtu,
+	.ndo_set_mac_address 	= eth_mac_addr,
+	.ndo_validate_addr	= eth_validate_addr,
+};
 
 static int __devinit hp100_probe1(struct net_device *dev, int ioaddr,
 				  u_char bus, struct pci_dev *pci_dev)
@@ -659,16 +679,10 @@ static int __devinit hp100_probe1(struct net_device *dev, int ioaddr,
 	lp->virt_memory_size = virt_memory_size;
 	lp->rx_ratio = hp100_rx_ratio;	/* can be conf'd with insmod */
 
-	dev->open = hp100_open;
-	dev->stop = hp100_close;
-
 	if (lp->mode == 1)	/* busmaster */
-		dev->hard_start_xmit = hp100_start_xmit_bm;
+		dev->netdev_ops = &hp100_bm_netdev_ops;
 	else
-		dev->hard_start_xmit = hp100_start_xmit;
-
-	dev->get_stats = hp100_get_stats;
-	dev->set_multicast_list = &hp100_set_multicast_list;
+		dev->netdev_ops = &hp100_netdev_ops;
 
 	/* Ask the card for which IRQ line it is configured */
 	if (bus == HP100_BUS_PCI) {
@@ -1155,7 +1169,7 @@ static void hp100_init_pdls(struct net_device *dev)
 	printk("hp100: %s: init pdls\n", dev->name);
 #endif
 
-	if (0 == lp->page_vaddr_algn)
+	if (!lp->page_vaddr_algn)
 		printk("hp100: %s: Warning: lp->page_vaddr_algn not initialised!\n", dev->name);
 	else {
 		/* pageptr shall point into the DMA accessible memory region  */
@@ -1214,7 +1228,7 @@ static int hp100_init_rxpdl(struct net_device *dev,
 	*(pdlptr + 2) = (u_int) virt_to_whatever(dev, pdlptr);	/* Address Frag 1 */
 	*(pdlptr + 3) = 4;	/* Length  Frag 1 */
 
-	return ((((MAX_RX_FRAG * 2 + 2) + 3) / 4) * 4);
+	return roundup(MAX_RX_FRAG * 2 + 2, 4);
 }
 
 
@@ -1229,7 +1243,7 @@ static int hp100_init_txpdl(struct net_device *dev,
 	ringptr->pdl_paddr = virt_to_whatever(dev, pdlptr);	/* +1 */
 	ringptr->skb = (void *) NULL;
 
-	return ((((MAX_TX_FRAG * 2 + 2) + 3) / 4) * 4);
+	return roundup(MAX_TX_FRAG * 2 + 2, 4);
 }
 
 /*
@@ -1258,7 +1272,7 @@ static int hp100_build_rx_pdl(hp100_ring_t * ringptr,
 	/* Note: This depends on the alloc_skb functions allocating more
 	 * space than requested, i.e. aligning to 16bytes */
 
-	ringptr->skb = dev_alloc_skb(((MAX_ETHER_SIZE + 2 + 3) / 4) * 4);
+	ringptr->skb = dev_alloc_skb(roundup(MAX_ETHER_SIZE + 2, 4));
 
 	if (NULL != ringptr->skb) {
 		/*
@@ -1281,7 +1295,7 @@ static int hp100_build_rx_pdl(hp100_ring_t * ringptr,
 #ifdef HP100_DEBUG_BM
 		printk("hp100: %s: build_rx_pdl: PDH@0x%x, skb->data (len %d) at 0x%x\n",
 				     dev->name, (u_int) ringptr->pdl,
-				     ((MAX_ETHER_SIZE + 2 + 3) / 4) * 4,
+				     roundup(MAX_ETHER_SIZE + 2, 4),
 				     (unsigned int) ringptr->skb->data);
 #endif
 
@@ -1836,7 +1850,6 @@ static void hp100_rx(struct net_device *dev)
 					ptr[9], ptr[10], ptr[11]);
 #endif
 			netif_rx(skb);
-			dev->last_rx = jiffies;
 			lp->stats.rx_packets++;
 			lp->stats.rx_bytes += pkt_len;
 		}
@@ -1927,7 +1940,6 @@ static void hp100_rx_bm(struct net_device *dev)
 
 				netif_rx(ptr->skb);	/* Up and away... */
 
-				dev->last_rx = jiffies;
 				lp->stats.rx_packets++;
 				lp->stats.rx_bytes += pkt_len;
 			}
@@ -2095,9 +2107,8 @@ static void hp100_set_multicast_list(struct net_device *dev)
 				addrs = dmi->dmi_addr;
 				if ((*addrs & 0x01) == 0x01) {	/* multicast address? */
 #ifdef HP100_DEBUG
-					printk("hp100: %s: multicast = %02x:%02x:%02x:%02x:%02x:%02x, ",
-						     dev->name, addrs[0], addrs[1], addrs[2],
-						     addrs[3], addrs[4], addrs[5]);
+					printk("hp100: %s: multicast = %pM, ",
+						     dev->name, addrs);
 #endif
 					for (j = idx = 0; j < 6; j++) {
 						idx ^= *addrs++ & 0x3f;
@@ -2843,7 +2854,6 @@ static int __init hp100_eisa_probe (struct device *gendev)
 	if (!dev)
 		return -ENOMEM;
 
-	SET_MODULE_OWNER(dev);
 	SET_NETDEV_DEV(dev, &edev->dev);
 
 	err = hp100_probe1(dev, edev->base_addr + 0xC38, HP100_BUS_EISA, NULL);
@@ -2896,7 +2906,6 @@ static int __devinit hp100_pci_probe (struct pci_dev *pdev,
 		goto out0;
 	}
 
-	SET_MODULE_OWNER(dev);
 	SET_NETDEV_DEV(dev, &pdev->dev);
 
 	pci_read_config_word(pdev, PCI_COMMAND, &pci_command);
@@ -2955,7 +2964,7 @@ static struct pci_driver hp100_pci_driver = {
  */
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Jaroslav Kysela <perex@suse.cz>, "
+MODULE_AUTHOR("Jaroslav Kysela <perex@perex.cz>, "
               "Siegfried \"Frieder\" Loeffler (dg1sek) <floeff@mathematik.uni-stuttgart.de>");
 MODULE_DESCRIPTION("HP CASCADE Architecture Driver for 100VG-AnyLan Network Adapters");
 
@@ -2993,7 +3002,6 @@ static int __init hp100_isa_init(void)
 
 			return -ENOMEM;
 		}
-		SET_MODULE_OWNER(dev);
 
 		err = hp100_isa_probe(dev, hp100_port[i]);
 		if (!err)
@@ -3062,12 +3070,3 @@ static void __exit hp100_module_exit(void)
 
 module_init(hp100_module_init)
 module_exit(hp100_module_exit)
-
-
-/*
- * Local variables:
- *  compile-command: "gcc -D__KERNEL__ -I/usr/src/linux/net/inet -Wall -Wstrict-prototypes -O6 -m486 -c hp100.c"
- *  c-indent-level: 2
- *  tab-width: 8
- * End:
- */

@@ -88,6 +88,16 @@ MODULE_LICENSE("GPL");
 
 #define PWRDBG(fmt, arg...)	printk(KERN_DEBUG fmt , ## arg)
 
+#ifdef CONFIG_SERIAL_PMACZILOG_TTYS
+#define PMACZILOG_MAJOR		TTY_MAJOR
+#define PMACZILOG_MINOR		64
+#define PMACZILOG_NAME		"ttyS"
+#else
+#define PMACZILOG_MAJOR		204
+#define PMACZILOG_MINOR		192
+#define PMACZILOG_NAME		"ttyPZ"
+#endif
+
 
 /*
  * For the sake of early serial console, we can do a pre-probe
@@ -99,9 +109,10 @@ static DEFINE_MUTEX(pmz_irq_mutex);
 
 static struct uart_driver pmz_uart_reg = {
 	.owner		=	THIS_MODULE,
-	.driver_name	=	"ttyS",
-	.dev_name	=	"ttyS",
-	.major		=	TTY_MAJOR,
+	.driver_name	=	PMACZILOG_NAME,
+	.dev_name	=	PMACZILOG_NAME,
+	.major		=	PMACZILOG_MAJOR,
+	.minor		=	PMACZILOG_MINOR,
 };
 
 
@@ -231,12 +242,12 @@ static struct tty_struct *pmz_receive_chars(struct uart_pmac_port *uap)
 	}
 
 	/* Sanity check, make sure the old bug is no longer happening */
-	if (uap->port.info == NULL || uap->port.info->tty == NULL) {
+	if (uap->port.info == NULL || uap->port.info->port.tty == NULL) {
 		WARN_ON(1);
 		(void)read_zsdata(uap);
 		return NULL;
 	}
-	tty = uap->port.info->tty;
+	tty = uap->port.info->port.tty;
 
 	while (1) {
 		error = 0;
@@ -1372,6 +1383,29 @@ static int pmz_verify_port(struct uart_port *port, struct serial_struct *ser)
 	return -EINVAL;
 }
 
+#ifdef CONFIG_CONSOLE_POLL
+
+static int pmz_poll_get_char(struct uart_port *port)
+{
+	struct uart_pmac_port *uap = (struct uart_pmac_port *)port;
+
+	while ((read_zsreg(uap, R0) & Rx_CH_AV) == 0)
+		udelay(5);
+	return read_zsdata(uap);
+}
+
+static void pmz_poll_put_char(struct uart_port *port, unsigned char c)
+{
+	struct uart_pmac_port *uap = (struct uart_pmac_port *)port;
+
+	/* Wait for the transmit buffer to empty. */
+	while ((read_zsreg(uap, R0) & Tx_BUF_EMP) == 0)
+		udelay(5);
+	write_zsdata(uap, c);
+}
+
+#endif
+
 static struct uart_ops pmz_pops = {
 	.tx_empty	=	pmz_tx_empty,
 	.set_mctrl	=	pmz_set_mctrl,
@@ -1389,6 +1423,10 @@ static struct uart_ops pmz_pops = {
 	.request_port	=	pmz_request_port,
 	.config_port	=	pmz_config_port,
 	.verify_port	=	pmz_verify_port,
+#ifdef CONFIG_CONSOLE_POLL
+	.poll_get_char	=	pmz_poll_get_char,
+	.poll_put_char	=	pmz_poll_put_char,
+#endif
 };
 
 /*
@@ -1587,7 +1625,7 @@ static int pmz_suspend(struct macio_dev *mdev, pm_message_t pm_state)
 	if (pm_state.event == mdev->ofdev.dev.power.power_state.event)
 		return 0;
 
-	pmz_debug("suspend, switching to state %d\n", pm_state);
+	pmz_debug("suspend, switching to state %d\n", pm_state.event);
 
 	state = pmz_uart_reg.state + uap->port.line;
 
@@ -1778,7 +1816,7 @@ static void pmz_console_write(struct console *con, const char *s, unsigned int c
 static int __init pmz_console_setup(struct console *co, char *options);
 
 static struct console pmz_console = {
-	.name	=	"ttyS",
+	.name	=	PMACZILOG_NAME,
 	.write	=	pmz_console_write,
 	.device	=	uart_console_device,
 	.setup	=	pmz_console_setup,
@@ -1802,7 +1840,6 @@ static int __init pmz_register(void)
 	
 	pmz_uart_reg.nr = pmz_ports_count;
 	pmz_uart_reg.cons = PMACZILOG_CONSOLE;
-	pmz_uart_reg.minor = 64;
 
 	/*
 	 * Register this driver with the serial core

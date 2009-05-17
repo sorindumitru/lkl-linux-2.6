@@ -19,6 +19,7 @@
 #include <linux/ptrace.h>
 #include <linux/unistd.h>
 #include <linux/compiler.h>
+#include <linux/syscalls.h>
 #include <linux/uaccess.h>
 
 #include <asm/abi.h>
@@ -338,8 +339,8 @@ asmlinkage int sys_rt_sigsuspend(nabi_no_regargs struct pt_regs regs)
 }
 
 #ifdef CONFIG_TRAD_SIGNALS
-asmlinkage int sys_sigaction(int sig, const struct sigaction __user *act,
-	struct sigaction __user *oact)
+SYSCALL_DEFINE3(sigaction, int, sig, const struct sigaction __user *, act,
+	struct sigaction __user *, oact)
 {
 	struct k_sigaction new_ka, old_ka;
 	int ret;
@@ -613,9 +614,9 @@ static int handle_signal(unsigned long sig, siginfo_t *info,
 		ret = current->thread.abi->setup_frame(ka, regs, sig, oldset);
 
 	spin_lock_irq(&current->sighand->siglock);
-	sigorsets(&current->blocked,&current->blocked,&ka->sa.sa_mask);
+	sigorsets(&current->blocked, &current->blocked, &ka->sa.sa_mask);
 	if (!(ka->sa.sa_flags & SA_NODEFER))
-		sigaddset(&current->blocked,sig);
+		sigaddset(&current->blocked, sig);
 	recalc_sigpending();
 	spin_unlock_irq(&current->sighand->siglock);
 

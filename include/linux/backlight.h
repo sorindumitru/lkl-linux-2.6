@@ -31,6 +31,10 @@ struct backlight_device;
 struct fb_info;
 
 struct backlight_ops {
+	unsigned int options;
+
+#define BL_CORE_SUSPENDRESUME	(1 << 0)
+
 	/* Notify the backlight driver some property has changed */
 	int (*update_status)(struct backlight_device *);
 	/* Return the current backlight brightness (accounting for power,
@@ -51,7 +55,19 @@ struct backlight_properties {
 	   modes; 4: full off), see FB_BLANK_XXX */
 	int power;
 	/* FB Blanking active? (values as for power) */
+	/* Due to be removed, please use (state & BL_CORE_FBBLANK) */
 	int fb_blank;
+	/* Flags used to signal drivers of state changes */
+	/* Upper 4 bits are reserved for driver internal use */
+	unsigned int state;
+
+#define BL_CORE_SUSPENDED	(1 << 0)	/* backlight is suspended */
+#define BL_CORE_FBBLANK		(1 << 1)	/* backlight is under an fb blank event */
+#define BL_CORE_DRIVER4		(1 << 28)	/* reserved for driver specific use */
+#define BL_CORE_DRIVER3		(1 << 29)	/* reserved for driver specific use */
+#define BL_CORE_DRIVER2		(1 << 30)	/* reserved for driver specific use */
+#define BL_CORE_DRIVER1		(1 << 31)	/* reserved for driver specific use */
+
 };
 
 struct backlight_device {
@@ -69,8 +85,8 @@ struct backlight_device {
 
 	/* The framebuffer notifier block */
 	struct notifier_block fb_notif;
-	/* The class device structure */
-	struct class_device class_dev;
+
+	struct device dev;
 };
 
 static inline void backlight_update_status(struct backlight_device *bd)
@@ -85,6 +101,20 @@ extern struct backlight_device *backlight_device_register(const char *name,
 	struct device *dev, void *devdata, struct backlight_ops *ops);
 extern void backlight_device_unregister(struct backlight_device *bd);
 
-#define to_backlight_device(obj) container_of(obj, struct backlight_device, class_dev)
+#define to_backlight_device(obj) container_of(obj, struct backlight_device, dev)
+
+static inline void * bl_get_data(struct backlight_device *bl_dev)
+{
+	return dev_get_drvdata(&bl_dev->dev);
+}
+
+struct generic_bl_info {
+	const char *name;
+	int max_intensity;
+	int default_intensity;
+	int limit_mask;
+	void (*set_bl_intensity)(int intensity);
+	void (*kick_battery)(void);
+};
 
 #endif

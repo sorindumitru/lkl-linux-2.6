@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2004-2005 Emulex.  All rights reserved.           *
+ * Copyright (C) 2004-2006 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
  * www.emulex.com                                                  *
  *                                                                 *
@@ -107,10 +107,13 @@ struct fcp_cmnd {
 
 };
 
+struct lpfc_scsicmd_bkt {
+	uint32_t cmd_count;
+};
+
 struct lpfc_scsi_buf {
 	struct list_head list;
 	struct scsi_cmnd *pCmd;
-	struct lpfc_hba *scsi_hba;
 	struct lpfc_rport_data *rdata;
 
 	uint32_t timeout;
@@ -121,6 +124,8 @@ struct lpfc_scsi_buf {
 	uint32_t   seg_cnt;	/* Number of scatter-gather segments returned by
 				 * dma_map_sg.  The driver needs this for calls
 				 * to dma_unmap_sg. */
+	uint32_t prot_seg_cnt;  /* seg_cnt's counterpart for protection data */
+
 	dma_addr_t nonsg_phys;	/* Non scatter-gather physical address. */
 
 	/*
@@ -139,6 +144,8 @@ struct lpfc_scsi_buf {
 	 * Iotag is in here
 	 */
 	struct lpfc_iocbq cur_iocbq;
+	wait_queue_head_t *waitq;
+	unsigned long start_time;
 };
 
 #define LPFC_SCSI_DMA_EXT_SIZE 264

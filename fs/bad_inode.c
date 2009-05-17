@@ -114,12 +114,6 @@ static int bad_file_lock(struct file *file, int cmd, struct file_lock *fl)
 	return -EIO;
 }
 
-static ssize_t bad_file_sendfile(struct file *in_file, loff_t *ppos,
-			size_t count, read_actor_t actor, void *target)
-{
-	return -EIO;
-}
-
 static ssize_t bad_file_sendpage(struct file *file, struct page *page,
 			int off, size_t len, loff_t *pos, int more)
 {
@@ -134,11 +128,6 @@ static unsigned long bad_file_get_unmapped_area(struct file *file,
 }
 
 static int bad_file_check_flags(int flags)
-{
-	return -EIO;
-}
-
-static int bad_file_dir_notify(struct file *file, unsigned long arg)
 {
 	return -EIO;
 }
@@ -182,11 +171,9 @@ static const struct file_operations bad_file_ops =
 	.aio_fsync	= bad_file_aio_fsync,
 	.fasync		= bad_file_fasync,
 	.lock		= bad_file_lock,
-	.sendfile	= bad_file_sendfile,
 	.sendpage	= bad_file_sendpage,
 	.get_unmapped_area = bad_file_get_unmapped_area,
 	.check_flags	= bad_file_check_flags,
-	.dir_notify	= bad_file_dir_notify,
 	.flock		= bad_file_flock,
 	.splice_write	= bad_file_splice_write,
 	.splice_read	= bad_file_splice_read,
@@ -250,8 +237,7 @@ static int bad_inode_readlink(struct dentry *dentry, char __user *buffer,
 	return -EIO;
 }
 
-static int bad_inode_permission(struct inode *inode, int mask,
-			struct nameidata *nd)
+static int bad_inode_permission(struct inode *inode, int mask)
 {
 	return -EIO;
 }
@@ -366,3 +352,17 @@ int is_bad_inode(struct inode *inode)
 }
 
 EXPORT_SYMBOL(is_bad_inode);
+
+/**
+ * iget_failed - Mark an under-construction inode as dead and release it
+ * @inode: The inode to discard
+ *
+ * Mark an under-construction inode as dead and release it.
+ */
+void iget_failed(struct inode *inode)
+{
+	make_bad_inode(inode);
+	unlock_new_inode(inode);
+	iput(inode);
+}
+EXPORT_SYMBOL(iget_failed);

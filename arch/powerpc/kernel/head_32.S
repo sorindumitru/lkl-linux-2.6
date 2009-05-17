@@ -9,7 +9,6 @@
  *  rewritten by Paul Mackerras.
  *    Copyright (C) 1996 Paul Mackerras.
  *  MPC8xx modifications Copyright (C) 1997 Dan Malek (dmalek@jlc.net).
- *  Amiga/APUS changes by Jesper Skov (jskov@cygnus.co.uk).
  *
  *  This file contains the low-level support and setup for the
  *  PowerPC platform, including trap and interrupt dispatch.
@@ -31,10 +30,8 @@
 #include <asm/thread_info.h>
 #include <asm/ppc_asm.h>
 #include <asm/asm-offsets.h>
-
-#ifdef CONFIG_APUS
-#include <asm/amigappc.h>
-#endif
+#include <asm/ptrace.h>
+#include <asm/bug.h>
 
 /* 601 only have IBAT; cr0.eq is set on 601 when using this macro */
 #define LOAD_BAT(n, reg, RA, RB)	\
@@ -53,20 +50,17 @@
 	mtspr	SPRN_DBAT##n##L,RB;	\
 1:
 
-	.text
+	.section	.text.head, "ax"
 	.stabs	"arch/powerpc/kernel/",N_SO,0,0,0f
 	.stabs	"head_32.S",N_SO,0,0,0f
 0:
-	.globl	_stext
-_stext:
+_ENTRY(_stext);
 
 /*
  * _start is defined this way because the XCOFF loader in the OpenFirmware
  * on the powermac expects the entry point to be a procedure descriptor.
  */
-	.text
-	.globl	_start
-_start:
+_ENTRY(_start);
 	/*
 	 * These are here for legacy reasons, the kernel used to
 	 * need to look like a coff function entry for the pmac
@@ -91,11 +85,6 @@ _start:
  *  r3: 'BooX' (0x426f6f58)
  *  r4: virtual address of boot_infos_t
  *  r5: 0
- *
- * APUS
- *   r3: 'APUS'
- *   r4: physical address of memory base
- *   Linux/m68k style BootInfo structure at &_end.
  *
  * PREP
  * This is jumped to on prep systems right after the kernel is relocated
@@ -122,6 +111,12 @@ __start:
 #ifdef CONFIG_PPC_MULTIPLATFORM
 	cmpwi	0,r5,0
 	beq	1f
+
+	/* find out where we are now */
+	bcl	20,31,$+4
+0:	mflr	r8			/* r8 = runtime addr here */
+	addis	r8,r8,(_stext - 0b)@ha
+	addi	r8,r8,(_stext - 0b)@l	/* current runtime base addr */
 	bl	prom_init
 	trap
 #endif
@@ -150,14 +145,6 @@ __start:
  */
 	bl	early_init
 
-#ifdef CONFIG_APUS
-/* On APUS the __va/__pa constants need to be set to the correct
- * values before continuing.
- */
-	mr	r4,r30
-	bl	fix_mem_constants
-#endif /* CONFIG_APUS */
-
 /* Switch MMU off, clear BATs and flush TLB. At this point, r3 contains
  * the physical address we are running at, returned by early_init()
  */
@@ -167,8 +154,11 @@ __after_mmu_off:
 	bl	flush_tlbs
 
 	bl	initial_bats
-#if !defined(CONFIG_APUS) && defined(CONFIG_BOOTX_TEXT)
+#if defined(CONFIG_BOOTX_TEXT)
 	bl	setup_disp_bat
+#endif
+#ifdef CONFIG_PPC_EARLY_DEBUG_CPM
+	bl	setup_cpm_bat
 #endif
 
 /*
@@ -183,7 +173,6 @@ __after_mmu_off:
 #endif /* CONFIG_6xx */
 
 
-#ifndef CONFIG_APUS
 /*
  * We need to run with _start at physical address 0.
  * On CHRP, we are loaded at 0x10000 since OF on CHRP uses
@@ -194,9 +183,9 @@ __after_mmu_off:
 	bl	reloc_offset
 	mr	r26,r3
 	addis	r4,r3,KERNELBASE@h	/* current address of _start */
-	cmpwi	0,r4,0			/* are we already running at 0? */
+	lis	r5,PHYSICAL_START@h
+	cmplw	0,r4,r5			/* already running at PHYSICAL_START? */
 	bne	relocate_kernel
-#endif /* CONFIG_APUS */
 /*
  * we now have the 1st 16M of ram mapped with the bats.
  * prep needs the mmu to be turned on here, but pmac already has it on.
@@ -288,8 +277,8 @@ __secondary_hold_acknowledge:
 	li	r10,MSR_KERNEL & ~(MSR_IR|MSR_DR); /* can take exceptions */ \
 	MTMSRD(r10);			/* (except for mach check in rtas) */ \
 	stw	r0,GPR0(r11);	\
-	lis	r10,0x7265;		/* put exception frame marker */ \
-	addi	r10,r10,0x6773;	\
+	lis	r10,STACK_FRAME_REGS_MARKER@ha; /* exception frame marker */ \
+	addi	r10,r10,STACK_FRAME_REGS_MARKER@l; \
 	stw	r10,8(r11);	\
 	SAVE_4GPRS(3, r11);	\
 	SAVE_2GPRS(7, r11)
@@ -388,13 +377,13 @@ i##n:								\
 DataAccess:
 	EXCEPTION_PROLOG
 	mfspr	r10,SPRN_DSISR
+	stw	r10,_DSISR(r11)
 	andis.	r0,r10,0xa470		/* weird error? */
 	bne	1f			/* if not, try to put a PTE */
 	mfspr	r4,SPRN_DAR		/* into the hash table */
 	rlwinm	r3,r10,32-15,21,21	/* DSISR_STORE -> _PAGE_RW */
 	bl	hash_page
-1:	stw	r10,_DSISR(r11)
-	mr	r5,r10
+1:	lwz	r5,_DSISR(r11)		/* get DSISR value */
 	mfspr	r4,SPRN_DAR
 	EXC_XFER_EE_LITE(0x300, handle_page_fault)
 
@@ -440,8 +429,10 @@ BEGIN_FTR_SECTION
 	b 	ProgramCheck
 END_FTR_SECTION_IFSET(CPU_FTR_FPU_UNAVAILABLE)
 	EXCEPTION_PROLOG
-	bne	load_up_fpu		/* if from user, just load it up */
-	addi	r3,r1,STACK_FRAME_OVERHEAD
+	beq	1f
+	bl	load_up_fpu		/* if from user, just load it up */
+	b	fast_exception_return
+1:	addi	r3,r1,STACK_FRAME_OVERHEAD
 	EXC_XFER_EE_LITE(0x800, kernel_fp_unavailable_exception)
 
 /* Decrementer */
@@ -489,16 +480,16 @@ InstructionTLBMiss:
 	mfctr	r0
 	/* Get PTE (linux-style) and check access */
 	mfspr	r3,SPRN_IMISS
-	lis	r1,KERNELBASE@h		/* check if kernel address */
-	cmplw	0,r3,r1
+	lis	r1,PAGE_OFFSET@h		/* check if kernel address */
+	cmplw	0,r1,r3
 	mfspr	r2,SPRN_SPRG3
 	li	r1,_PAGE_USER|_PAGE_PRESENT /* low addresses tested as user */
 	lwz	r2,PGDIR(r2)
-	blt+	112f
+	bge-	112f
+	mfspr	r2,SPRN_SRR1		/* and MSR_PR bit from SRR1 */
+	rlwimi	r1,r2,32-12,29,29	/* shift MSR_PR to _PAGE_USER posn */
 	lis	r2,swapper_pg_dir@ha	/* if kernel address, use */
 	addi	r2,r2,swapper_pg_dir@l	/* kernel page table */
-	mfspr	r1,SPRN_SRR1		/* and MSR_PR bit from SRR1 */
-	rlwinm	r1,r1,32-12,29,29	/* shift MSR_PR to _PAGE_USER posn */
 112:	tophys(r2,r2)
 	rlwimi	r2,r3,12,20,29		/* insert top 10 bits of address */
 	lwz	r2,0(r2)		/* get pmd entry */
@@ -520,8 +511,11 @@ InstructionTLBMiss:
 	and	r1,r1,r2		/* writable if _RW and _DIRTY */
 	rlwimi	r3,r3,32-1,30,30	/* _PAGE_USER -> PP msb */
 	rlwimi	r3,r3,32-1,31,31	/* _PAGE_USER -> PP lsb */
-	ori	r1,r1,0xe14		/* clear out reserved bits and M */
+	ori	r1,r1,0xe04		/* clear out reserved bits */
 	andc	r1,r3,r1		/* PP = user? (rw&dirty? 2: 3): 0 */
+BEGIN_FTR_SECTION
+	rlwinm	r1,r1,0,~_PAGE_COHERENT	/* clear M (coherence not required) */
+END_FTR_SECTION_IFCLR(CPU_FTR_NEED_COHERENT)
 	mtspr	SPRN_RPA,r1
 	mfspr	r3,SPRN_IMISS
 	tlbli	r3
@@ -563,16 +557,16 @@ DataLoadTLBMiss:
 	mfctr	r0
 	/* Get PTE (linux-style) and check access */
 	mfspr	r3,SPRN_DMISS
-	lis	r1,KERNELBASE@h		/* check if kernel address */
-	cmplw	0,r3,r1
+	lis	r1,PAGE_OFFSET@h		/* check if kernel address */
+	cmplw	0,r1,r3
 	mfspr	r2,SPRN_SPRG3
 	li	r1,_PAGE_USER|_PAGE_PRESENT /* low addresses tested as user */
 	lwz	r2,PGDIR(r2)
-	blt+	112f
+	bge-	112f
+	mfspr	r2,SPRN_SRR1		/* and MSR_PR bit from SRR1 */
+	rlwimi	r1,r2,32-12,29,29	/* shift MSR_PR to _PAGE_USER posn */
 	lis	r2,swapper_pg_dir@ha	/* if kernel address, use */
 	addi	r2,r2,swapper_pg_dir@l	/* kernel page table */
-	mfspr	r1,SPRN_SRR1		/* and MSR_PR bit from SRR1 */
-	rlwinm	r1,r1,32-12,29,29	/* shift MSR_PR to _PAGE_USER posn */
 112:	tophys(r2,r2)
 	rlwimi	r2,r3,12,20,29		/* insert top 10 bits of address */
 	lwz	r2,0(r2)		/* get pmd entry */
@@ -594,8 +588,11 @@ DataLoadTLBMiss:
 	and	r1,r1,r2		/* writable if _RW and _DIRTY */
 	rlwimi	r3,r3,32-1,30,30	/* _PAGE_USER -> PP msb */
 	rlwimi	r3,r3,32-1,31,31	/* _PAGE_USER -> PP lsb */
-	ori	r1,r1,0xe14		/* clear out reserved bits and M */
+	ori	r1,r1,0xe04		/* clear out reserved bits */
 	andc	r1,r3,r1		/* PP = user? (rw&dirty? 2: 3): 0 */
+BEGIN_FTR_SECTION
+	rlwinm	r1,r1,0,~_PAGE_COHERENT	/* clear M (coherence not required) */
+END_FTR_SECTION_IFCLR(CPU_FTR_NEED_COHERENT)
 	mtspr	SPRN_RPA,r1
 	mfspr	r3,SPRN_DMISS
 	tlbld	r3
@@ -635,16 +632,16 @@ DataStoreTLBMiss:
 	mfctr	r0
 	/* Get PTE (linux-style) and check access */
 	mfspr	r3,SPRN_DMISS
-	lis	r1,KERNELBASE@h		/* check if kernel address */
-	cmplw	0,r3,r1
+	lis	r1,PAGE_OFFSET@h		/* check if kernel address */
+	cmplw	0,r1,r3
 	mfspr	r2,SPRN_SPRG3
 	li	r1,_PAGE_RW|_PAGE_USER|_PAGE_PRESENT /* access flags */
 	lwz	r2,PGDIR(r2)
-	blt+	112f
+	bge-	112f
+	mfspr	r2,SPRN_SRR1		/* and MSR_PR bit from SRR1 */
+	rlwimi	r1,r2,32-12,29,29	/* shift MSR_PR to _PAGE_USER posn */
 	lis	r2,swapper_pg_dir@ha	/* if kernel address, use */
 	addi	r2,r2,swapper_pg_dir@l	/* kernel page table */
-	mfspr	r1,SPRN_SRR1		/* and MSR_PR bit from SRR1 */
-	rlwinm	r1,r1,32-12,29,29	/* shift MSR_PR to _PAGE_USER posn */
 112:	tophys(r2,r2)
 	rlwimi	r2,r3,12,20,29		/* insert top 10 bits of address */
 	lwz	r2,0(r2)		/* get pmd entry */
@@ -662,8 +659,11 @@ DataStoreTLBMiss:
 	stw	r3,0(r2)		/* update PTE (accessed/dirty bits) */
 	/* Convert linux-style PTE to low word of PPC-style PTE */
 	rlwimi	r3,r3,32-1,30,30	/* _PAGE_USER -> PP msb */
-	li	r1,0xe15		/* clear out reserved bits and M */
+	li	r1,0xe05		/* clear out reserved bits & PP lsb */
 	andc	r1,r3,r1		/* PP = user? 2: 0 */
+BEGIN_FTR_SECTION
+	rlwinm	r1,r1,0,~_PAGE_COHERENT	/* clear M (coherence not required) */
+END_FTR_SECTION_IFCLR(CPU_FTR_NEED_COHERENT)
 	mtspr	SPRN_RPA,r1
 	mfspr	r3,SPRN_DMISS
 	tlbld	r3
@@ -783,23 +783,6 @@ load_up_altivec:
 	b	fast_exception_return
 
 /*
- * AltiVec unavailable trap from kernel - print a message, but let
- * the task use AltiVec in the kernel until it returns to user mode.
- */
-KernelAltiVec:
-	lwz	r3,_MSR(r1)
-	oris	r3,r3,MSR_VEC@h
-	stw	r3,_MSR(r1)	/* enable use of AltiVec after return */
-	lis	r3,87f@h
-	ori	r3,r3,87f@l
-	mr	r4,r2		/* current */
-	lwz	r5,_NIP(r1)
-	bl	printk
-	b	ret_from_except
-87:	.string	"AltiVec used in kernel  (task=%p, pc=%x)  \n"
-	.align	4,0
-
-/*
  * giveup_altivec(tsk)
  * Disable AltiVec for the task given as the argument,
  * and save the AltiVec registers in its thread_struct.
@@ -838,13 +821,13 @@ giveup_altivec:
 
 /*
  * This code is jumped to from the startup code to copy
- * the kernel image to physical address 0.
+ * the kernel image to physical address PHYSICAL_START.
  */
 relocate_kernel:
 	addis	r9,r26,klimit@ha	/* fetch klimit */
 	lwz	r25,klimit@l(r9)
 	addis	r25,r25,-KERNELBASE@h
-	li	r3,0			/* Destination base address */
+	lis	r3,PHYSICAL_START@h	/* Destination base address */
 	li	r6,0			/* Destination offset */
 	li	r5,0x4000		/* # bytes of memory to copy */
 	bl	copy_and_flush		/* copy the first 0x4000 bytes */
@@ -861,7 +844,7 @@ relocate_kernel:
  * r3 = dest addr, r4 = source addr, r5 = copy limit, r6 = start offset
  * on exit, r3, r4, r5 are unchanged, r6 is updated to be >= r5.
  */
-_GLOBAL(copy_and_flush)
+_ENTRY(copy_and_flush)
 	addi	r5,r5,-4
 	addi	r6,r6,-4
 4:	li	r0,L1_CACHE_BYTES/4
@@ -880,85 +863,6 @@ _GLOBAL(copy_and_flush)
 	addi	r5,r5,4
 	addi	r6,r6,4
 	blr
-
-#ifdef CONFIG_APUS
-/*
- * On APUS the physical base address of the kernel is not known at compile
- * time, which means the __pa/__va constants used are incorrect. In the
- * __init section is recorded the virtual addresses of instructions using
- * these constants, so all that has to be done is fix these before
- * continuing the kernel boot.
- *
- * r4 = The physical address of the kernel base.
- */
-fix_mem_constants:
-	mr	r10,r4
-	addis	r10,r10,-KERNELBASE@h    /* virt_to_phys constant */
-	neg	r11,r10	                 /* phys_to_virt constant */
-
-	lis	r12,__vtop_table_begin@h
-	ori	r12,r12,__vtop_table_begin@l
-	add	r12,r12,r10	         /* table begin phys address */
-	lis	r13,__vtop_table_end@h
-	ori	r13,r13,__vtop_table_end@l
-	add	r13,r13,r10	         /* table end phys address */
-	subi	r12,r12,4
-	subi	r13,r13,4
-1:	lwzu	r14,4(r12)               /* virt address of instruction */
-	add     r14,r14,r10              /* phys address of instruction */
-	lwz     r15,0(r14)               /* instruction, now insert top */
-	rlwimi  r15,r10,16,16,31         /* half of vp const in low half */
-	stw	r15,0(r14)               /* of instruction and restore. */
-	dcbst	r0,r14			 /* write it to memory */
-	sync
-	icbi	r0,r14			 /* flush the icache line */
-	cmpw	r12,r13
-	bne     1b
-	sync				/* additional sync needed on g4 */
-	isync
-
-/*
- * Map the memory where the exception handlers will
- * be copied to when hash constants have been patched.
- */
-#ifdef CONFIG_APUS_FAST_EXCEPT
-	lis	r8,0xfff0
-#else
-	lis	r8,0
-#endif
-	ori	r8,r8,0x2		/* 128KB, supervisor */
-	mtspr	SPRN_DBAT3U,r8
-	mtspr	SPRN_DBAT3L,r8
-
-	lis	r12,__ptov_table_begin@h
-	ori	r12,r12,__ptov_table_begin@l
-	add	r12,r12,r10	         /* table begin phys address */
-	lis	r13,__ptov_table_end@h
-	ori	r13,r13,__ptov_table_end@l
-	add	r13,r13,r10	         /* table end phys address */
-	subi	r12,r12,4
-	subi	r13,r13,4
-1:	lwzu	r14,4(r12)               /* virt address of instruction */
-	add     r14,r14,r10              /* phys address of instruction */
-	lwz     r15,0(r14)               /* instruction, now insert top */
-	rlwimi  r15,r11,16,16,31         /* half of pv const in low half*/
-	stw	r15,0(r14)               /* of instruction and restore. */
-	dcbst	r0,r14			 /* write it to memory */
-	sync
-	icbi	r0,r14			 /* flush the icache line */
-	cmpw	r12,r13
-	bne     1b
-
-	sync				/* additional sync needed on g4 */
-	isync				/* No speculative loading until now */
-	blr
-
-/***********************************************************************
- *  Please note that on APUS the exception handlers are located at the
- *  physical address 0xfff0000. For this reason, the exception handlers
- *  cannot use relative branches to access the code below.
- ***********************************************************************/
-#endif /* CONFIG_APUS */
 
 #ifdef CONFIG_SMP
 #ifdef CONFIG_GEMINI
@@ -1053,9 +957,9 @@ __secondary_start:
  * included in CONFIG_6xx
  */
 #if !defined(CONFIG_6xx)
-_GLOBAL(__save_cpu_setup)
+_ENTRY(__save_cpu_setup)
 	blr
-_GLOBAL(__restore_cpu_setup)
+_ENTRY(__restore_cpu_setup)
 	blr
 #endif /* !defined(CONFIG_6xx) */
 
@@ -1096,12 +1000,12 @@ load_up_mmu:
 	LOAD_BAT(1,r3,r4,r5)
 	LOAD_BAT(2,r3,r4,r5)
 	LOAD_BAT(3,r3,r4,r5)
-BEGIN_FTR_SECTION
+BEGIN_MMU_FTR_SECTION
 	LOAD_BAT(4,r3,r4,r5)
 	LOAD_BAT(5,r3,r4,r5)
 	LOAD_BAT(6,r3,r4,r5)
 	LOAD_BAT(7,r3,r4,r5)
-END_FTR_SECTION_IFSET(CPU_FTR_HAS_HIGH_BATS)
+END_MMU_FTR_SECTION_IFSET(MMU_FTR_USE_HIGH_BATS)
 	blr
 
 /*
@@ -1134,19 +1038,6 @@ start_here:
 	bl	machine_init
 	bl	__save_cpu_setup
 	bl	MMU_init
-
-#ifdef CONFIG_APUS
-	/* Copy exception code to exception vector base on APUS. */
-	lis	r4,KERNELBASE@h
-#ifdef CONFIG_APUS_FAST_EXCEPT
-	lis	r3,0xfff0		/* Copy to 0xfff00000 */
-#else
-	lis	r3,0			/* Copy to 0x00000000 */
-#endif
-	li	r5,0x4000		/* # bytes of memory to copy */
-	li	r6,0
-	bl	copy_and_flush		/* copy the first 0x4000 bytes */
-#endif  /* CONFIG_APUS */
 
 /*
  * Go back to running unmapped so we can load up new values
@@ -1190,9 +1081,14 @@ start_here:
 	RFI
 
 /*
+ * void switch_mmu_context(struct mm_struct *prev, struct mm_struct *next);
+ *
  * Set up the segment registers for a new context.
  */
-_GLOBAL(set_context)
+_ENTRY(switch_mmu_context)
+	lwz	r3,MMCONTEXTID(r4)
+	cmpwi	cr0,r3,0
+	blt-	4f
 	mulli	r3,r3,897	/* multiply context by skew factor */
 	rlwinm	r3,r3,4,8,27	/* VSID = (context & 0xfffff) << 4 */
 	addis	r3,r3,0x6000	/* Set Ks, Ku bits */
@@ -1203,6 +1099,7 @@ _GLOBAL(set_context)
 	/* Context switch the PTE pointer for the Abatron BDI2000.
 	 * The PGDIR is passed as second argument.
 	 */
+	lwz	r4,MM_PGD(r4)
 	lis	r5, KERNELBASE@h
 	lwz	r5, 0xf0(r5)
 	stw	r4, 0x4(r5)
@@ -1217,6 +1114,9 @@ _GLOBAL(set_context)
 	bdnz	3b
 	sync
 	isync
+	blr
+4:	trap
+	EMIT_BUG_ENTRY 4b,__FILE__,__LINE__,0
 	blr
 
 /*
@@ -1251,7 +1151,7 @@ clear_bats:
 	mtspr	SPRN_IBAT2L,r10
 	mtspr	SPRN_IBAT3U,r10
 	mtspr	SPRN_IBAT3L,r10
-BEGIN_FTR_SECTION
+BEGIN_MMU_FTR_SECTION
 	/* Here's a tweak: at this point, CPU setup have
 	 * not been called yet, so HIGH_BAT_EN may not be
 	 * set in HID0 for the 745x processors. However, it
@@ -1274,14 +1174,14 @@ BEGIN_FTR_SECTION
 	mtspr	SPRN_IBAT6L,r10
 	mtspr	SPRN_IBAT7U,r10
 	mtspr	SPRN_IBAT7L,r10
-END_FTR_SECTION_IFSET(CPU_FTR_HAS_HIGH_BATS)
+END_MMU_FTR_SECTION_IFSET(MMU_FTR_USE_HIGH_BATS)
 	blr
 
 flush_tlbs:
 	lis	r10, 0x40
 1:	addic.	r10, r10, -0x1000
 	tlbie	r10
-	blt	1b
+	bgt	1b
 	sync
 	blr
 
@@ -1298,11 +1198,11 @@ mmu_off:
 
 /*
  * Use the first pair of BAT registers to map the 1st 16MB
- * of RAM to KERNELBASE.  From this point on we can't safely
+ * of RAM to PAGE_OFFSET.  From this point on we can't safely
  * call OF any more.
  */
 initial_bats:
-	lis	r11,KERNELBASE@h
+	lis	r11,PAGE_OFFSET@h
 	mfspr	r9,SPRN_PVR
 	rlwinm	r9,r9,16,16,31		/* r9 = 1 for 601, 4 for 604 */
 	cmpwi	0,r9,1
@@ -1324,11 +1224,7 @@ initial_bats:
 #else
 	ori	r8,r8,2			/* R/W access */
 #endif /* CONFIG_SMP */
-#ifdef CONFIG_APUS
-	ori	r11,r11,BL_8M<<2|0x2	/* set up 8MB BAT registers for 604 */
-#else
 	ori	r11,r11,BL_256M<<2|0x2	/* set up BAT registers for 604 */
-#endif /* CONFIG_APUS */
 
 	mtspr	SPRN_DBAT0L,r8		/* N.B. 6xx (not 601) have valid */
 	mtspr	SPRN_DBAT0U,r11		/* bit in upper BAT register */
@@ -1338,7 +1234,7 @@ initial_bats:
 	blr
 
 
-#if !defined(CONFIG_APUS) && defined(CONFIG_BOOTX_TEXT)
+#ifdef CONFIG_BOOTX_TEXT
 setup_disp_bat:
 	/*
 	 * setup the display bat prepared for us in prom.c
@@ -1362,7 +1258,20 @@ setup_disp_bat:
 1:	mtspr	SPRN_IBAT3L,r8
 	mtspr	SPRN_IBAT3U,r11
 	blr
-#endif /* !defined(CONFIG_APUS) && defined(CONFIG_BOOTX_TEXT) */
+#endif /* CONFIG_BOOTX_TEXT */
+
+#ifdef CONFIG_PPC_EARLY_DEBUG_CPM
+setup_cpm_bat:
+	lis	r8, 0xf000
+	ori	r8, r8,	0x002a
+	mtspr	SPRN_DBAT1L, r8
+
+	lis	r11, 0xf000
+	ori	r11, r11, (BL_1M << 2) | 2
+	mtspr	SPRN_DBAT1U, r11
+
+	blr
+#endif
 
 #ifdef CONFIG_8260
 /* Jump into the system reset for the rom.
@@ -1414,15 +1323,7 @@ empty_zero_page:
 
 	.globl	swapper_pg_dir
 swapper_pg_dir:
-	.space	4096
-
-/*
- * This space gets a copy of optional info passed to us by the bootstrap
- * Used to pass parameters into the kernel like root=/dev/sda1, etc.
- */
-	.globl	cmd_line
-cmd_line:
-	.space	512
+	.space	PGD_TABLE_SIZE
 
 	.globl intercept_table
 intercept_table:

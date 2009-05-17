@@ -248,7 +248,7 @@ static int __init com90io_found(struct net_device *dev)
 		return -EBUSY;
 	}
 
-	lp = dev->priv;
+	lp = netdev_priv(dev);
 	lp->card_name = "COM90xx I/O";
 	lp->hw.command = com90io_command;
 	lp->hw.status = com90io_status;
@@ -290,7 +290,7 @@ static int __init com90io_found(struct net_device *dev)
  */
 static int com90io_reset(struct net_device *dev, int really_reset)
 {
-	struct arcnet_local *lp = dev->priv;
+	struct arcnet_local *lp = netdev_priv(dev);
 	short ioaddr = dev->base_addr;
 
 	BUGMSG(D_INIT, "Resetting %s (status=%02Xh)\n", dev->name, ASTATUS());
@@ -397,8 +397,6 @@ static int __init com90io_init(void)
 	dev = alloc_arcdev(device);
 	if (!dev)
 		return -ENOMEM;
-
-	SET_MODULE_OWNER(dev);
 
 	dev->base_addr = io;
 	dev->irq = irq;

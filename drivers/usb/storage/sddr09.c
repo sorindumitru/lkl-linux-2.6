@@ -1,6 +1,5 @@
 /* Driver for SanDisk SDDR-09 SmartMedia reader
  *
- * $Id: sddr09.c,v 1.24 2002/04/22 03:39:43 mdharm Exp $
  *   (c) 2000, 2001 Robert Baruch (autophile@starband.net)
  *   (c) 2002 Andries Brouwer (aeb@cwi.nl)
  * Developed with the assistance of:
@@ -46,6 +45,7 @@
 
 #include <scsi/scsi.h>
 #include <scsi/scsi_cmnd.h>
+#include <scsi/scsi_device.h>
 
 #include "usb.h"
 #include "transport.h"
@@ -705,7 +705,8 @@ sddr09_read_data(struct us_data *us,
 	unsigned char *buffer;
 	unsigned int lba, maxlba, pba;
 	unsigned int page, pages;
-	unsigned int len, index, offset;
+	unsigned int len, offset;
+	struct scatterlist *sg;
 	int result;
 
 	// Figure out the initial LBA and page
@@ -730,7 +731,8 @@ sddr09_read_data(struct us_data *us,
 	// contiguous LBA's. Another exercise left to the student.
 
 	result = 0;
-	index = offset = 0;
+	offset = 0;
+	sg = NULL;
 
 	while (sectors > 0) {
 
@@ -777,7 +779,7 @@ sddr09_read_data(struct us_data *us,
 
 		// Store the data in the transfer buffer
 		usb_stor_access_xfer_buf(buffer, len, us->srb,
-				&index, &offset, TO_XFER_BUF);
+				&sg, &offset, TO_XFER_BUF);
 
 		page = 0;
 		lba++;
@@ -931,7 +933,8 @@ sddr09_write_data(struct us_data *us,
 	unsigned int pagelen, blocklen;
 	unsigned char *blockbuffer;
 	unsigned char *buffer;
-	unsigned int len, index, offset;
+	unsigned int len, offset;
+	struct scatterlist *sg;
 	int result;
 
 	// Figure out the initial LBA and page
@@ -968,7 +971,8 @@ sddr09_write_data(struct us_data *us,
 	}
 
 	result = 0;
-	index = offset = 0;
+	offset = 0;
+	sg = NULL;
 
 	while (sectors > 0) {
 
@@ -987,7 +991,7 @@ sddr09_write_data(struct us_data *us,
 
 		// Get the data from the transfer buffer
 		usb_stor_access_xfer_buf(buffer, len, us->srb,
-				&index, &offset, FROM_XFER_BUF);
+				&sg, &offset, FROM_XFER_BUF);
 
 		result = sddr09_write_lba(us, lba, page, pages,
 				buffer, blockbuffer);
@@ -1443,6 +1447,48 @@ usb_stor_sddr09_dpcm_init(struct us_data *us) {
 }
 
 /*
+ * Transport for the Microtech DPCM-USB
+ */
+int dpcm_transport(struct scsi_cmnd *srb, struct us_data *us)
+{
+	int ret;
+
+	US_DEBUGP("dpcm_transport: LUN=%d\n", srb->device->lun);
+
+	switch (srb->device->lun) {
+	case 0:
+
+		/*
+		 * LUN 0 corresponds to the CompactFlash card reader.
+		 */
+		ret = usb_stor_CB_transport(srb, us);
+		break;
+
+	case 1:
+
+		/*
+		 * LUN 1 corresponds to the SmartMedia card reader.
+		 */
+
+		/*
+		 * Set the LUN to 0 (just in case).
+		 */
+		srb->device->lun = 0;
+		ret = sddr09_transport(srb, us);
+		srb->device->lun = 1;
+		break;
+
+	default:
+		US_DEBUGP("dpcm_transport: Invalid LUN %d\n",
+				srb->device->lun);
+		ret = USB_STOR_TRANSPORT_ERROR;
+		break;
+	}
+	return ret;
+}
+
+
+/*
  * Transport for the Sandisk SDDR-09
  */
 int sddr09_transport(struct scsi_cmnd *srb, struct us_data *us)
@@ -1619,7 +1665,7 @@ int sddr09_transport(struct scsi_cmnd *srb, struct us_data *us)
 		return USB_STOR_TRANSPORT_ERROR;
 	}
 
-	if (srb->request_bufflen == 0)
+	if (scsi_bufflen(srb) == 0)
 		return USB_STOR_TRANSPORT_GOOD;
 
 	if (srb->sc_data_direction == DMA_TO_DEVICE ||
@@ -1630,12 +1676,9 @@ int sddr09_transport(struct scsi_cmnd *srb, struct us_data *us)
 		US_DEBUGP("SDDR09: %s %d bytes\n",
 			  (srb->sc_data_direction == DMA_TO_DEVICE) ?
 			  "sending" : "receiving",
-			  srb->request_bufflen);
+			  scsi_bufflen(srb));
 
-		result = usb_stor_bulk_transfer_sg(us, pipe,
-					srb->request_buffer,
-					srb->request_bufflen,
-					srb->use_sg, &srb->resid);
+		result = usb_stor_bulk_srb(us, pipe, srb);
 
 		return (result == USB_STOR_XFER_GOOD ?
 			USB_STOR_TRANSPORT_GOOD : USB_STOR_TRANSPORT_ERROR);

@@ -21,31 +21,36 @@
 #include <linux/platform_device.h>
 #include <linux/errno.h>
 #include <linux/workqueue.h>
+#include <linux/i2c.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/nand.h>
 #include <linux/mtd/partitions.h>
 #include <linux/input.h>
+#include <linux/spi/spi.h>
+#include <linux/i2c/tps65010.h>
 
 #include <asm/setup.h>
 #include <asm/page.h>
-#include <asm/hardware.h>
+#include <mach/hardware.h>
+#include <asm/gpio.h>
+
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <asm/mach/flash.h>
 #include <asm/mach/map.h>
 
-#include <asm/arch/gpio.h>
-#include <asm/arch/gpioexpander.h>
-#include <asm/arch/irqs.h>
-#include <asm/arch/mux.h>
-#include <asm/arch/tc.h>
-#include <asm/arch/irda.h>
-#include <asm/arch/usb.h>
-#include <asm/arch/keypad.h>
-#include <asm/arch/dma.h>
-#include <asm/arch/common.h>
+#include <mach/gpioexpander.h>
+#include <mach/irqs.h>
+#include <mach/mux.h>
+#include <mach/tc.h>
+#include <mach/nand.h>
+#include <mach/irda.h>
+#include <mach/usb.h>
+#include <mach/keypad.h>
+#include <mach/dma.h>
+#include <mach/common.h>
 
-extern int omap_gpio_init(void);
+#define H3_TS_GPIO	48
 
 static int h3_keymap[] = {
 	KEY(0, 0, KEY_LEFT),
@@ -174,7 +179,7 @@ static struct mtd_partition nand_partitions[] = {
 };
 
 /* dip switches control NAND chip access:  8 bit, 16 bit, or neither */
-static struct nand_platform_data nand_data = {
+static struct omap_nand_platform_data nand_data = {
 	.options	= NAND_SAMSUNG_LP_OPTIONS,
 	.parts		= nand_partitions,
 	.nr_parts	= ARRAY_SIZE(nand_partitions),
@@ -203,7 +208,7 @@ static struct resource smc91x_resources[] = {
 	[1] = {
 		.start	= OMAP_GPIO_IRQ(40),
 		.end	= OMAP_GPIO_IRQ(40),
-		.flags	= IORESOURCE_IRQ,
+		.flags	= IORESOURCE_IRQ | IORESOURCE_IRQ_LOWEDGE,
 	},
 };
 
@@ -294,9 +299,11 @@ static int h3_select_irda(struct device *dev, int state)
 	return err;
 }
 
-static void set_trans_mode(void *data)
+static void set_trans_mode(struct work_struct *work)
 {
-	int *mode = data;
+	struct omap_irda_config *irda_config =
+		container_of(work, struct omap_irda_config, gpio_expa.work);
+	int mode = irda_config->mode;
 	unsigned char expa;
 	int err = 0;
 
@@ -306,7 +313,7 @@ static void set_trans_mode(void *data)
 
 	expa &= ~0x03;
 
-	if (*mode & IR_SIRMODE) {
+	if (mode & IR_SIRMODE) {
 		expa |= 0x01;
 	} else { /* MIR/FIR */
 		expa |= 0x03;
@@ -321,9 +328,9 @@ static int h3_transceiver_mode(struct device *dev, int mode)
 {
 	struct omap_irda_config *irda_config = dev->platform_data;
 
+	irda_config->mode = mode;
 	cancel_delayed_work(&irda_config->gpio_expa);
-	PREPARE_WORK(&irda_config->gpio_expa, set_trans_mode, &mode);
-#error this is not permitted - mode is an argument variable
+	PREPARE_DELAYED_WORK(&irda_config->gpio_expa, set_trans_mode);
 	schedule_delayed_work(&irda_config->gpio_expa, 0);
 
 	return 0;
@@ -349,11 +356,14 @@ static struct resource h3_irda_resources[] = {
 	},
 };
 
+static u64 irda_dmamask = 0xffffffff;
+
 static struct platform_device h3_irda_device = {
 	.name		= "omapirda",
 	.id		= 0,
 	.dev		= {
 		.platform_data	= &h3_irda_data,
+		.dma_mask	= &irda_dmamask,
 	},
 	.num_resources	= ARRAY_SIZE(h3_irda_resources),
 	.resource	= h3_irda_resources,
@@ -362,6 +372,17 @@ static struct platform_device h3_irda_device = {
 static struct platform_device h3_lcd_device = {
 	.name		= "lcd_h3",
 	.id		= -1,
+};
+
+static struct spi_board_info h3_spi_board_info[] __initdata = {
+	[0] = {
+		.modalias	= "tsc2101",
+		.bus_num	= 2,
+		.chip_select	= 0,
+		.irq		= OMAP_GPIO_IRQ(H3_TS_GPIO),
+		.max_speed_hz	= 16000000,
+		/* .platform_data	= &tsc_platform_data, */
+	},
 };
 
 static struct platform_device *devices[] __initdata = {
@@ -388,14 +409,6 @@ static struct omap_usb_config h3_usb_config __initdata = {
 	.pins[1]	= 3,
 };
 
-static struct omap_mmc_config h3_mmc_config __initdata = {
-	.mmc[0] = {
-		.enabled 	= 1,
-		.power_pin	= -1,   /* tps65010 GPIO4 */
-		.switch_pin	= OMAP_MPUIO(1),
-	},
-};
-
 static struct omap_uart_config h3_uart_config __initdata = {
 	.enabled_uarts = ((1 << 0) | (1 << 1) | (1 << 2)),
 };
@@ -404,18 +417,28 @@ static struct omap_lcd_config h3_lcd_config __initdata = {
 	.ctrl_name	= "internal",
 };
 
-static struct omap_board_config_kernel h3_config[] = {
+static struct omap_board_config_kernel h3_config[] __initdata = {
 	{ OMAP_TAG_USB,		&h3_usb_config },
-	{ OMAP_TAG_MMC,		&h3_mmc_config },
 	{ OMAP_TAG_UART,	&h3_uart_config },
 	{ OMAP_TAG_LCD,		&h3_lcd_config },
 };
 
+static struct i2c_board_info __initdata h3_i2c_board_info[] = {
+       {
+		I2C_BOARD_INFO("tps65013", 0x48),
+               /* .irq         = OMAP_GPIO_IRQ(??), */
+       },
+	{
+		I2C_BOARD_INFO("isp1301_omap", 0x2d),
+		.irq		= OMAP_GPIO_IRQ(14),
+	},
+};
+
 #define H3_NAND_RB_GPIO_PIN	10
 
-static int nand_dev_ready(struct nand_platform_data *data)
+static int nand_dev_ready(struct omap_nand_platform_data *data)
 {
-	return omap_get_gpio_datain(H3_NAND_RB_GPIO_PIN);
+	return gpio_get_value(H3_NAND_RB_GPIO_PIN);
 }
 
 static void __init h3_init(void)
@@ -433,23 +456,29 @@ static void __init h3_init(void)
 
 	nand_resource.end = nand_resource.start = OMAP_CS2B_PHYS;
 	nand_resource.end += SZ_4K - 1;
-	if (!(omap_request_gpio(H3_NAND_RB_GPIO_PIN)))
-		nand_data.dev_ready = nand_dev_ready;
+	if (gpio_request(H3_NAND_RB_GPIO_PIN, "NAND ready") < 0)
+		BUG();
+	nand_data.dev_ready = nand_dev_ready;
 
 	/* GPIO10 Func_MUX_CTRL reg bit 29:27, Configure V2 to mode1 as GPIO */
 	/* GPIO10 pullup/down register, Enable pullup on GPIO10 */
 	omap_cfg_reg(V2_1710_GPIO10);
 
 	platform_add_devices(devices, ARRAY_SIZE(devices));
+	spi_register_board_info(h3_spi_board_info,
+				ARRAY_SIZE(h3_spi_board_info));
 	omap_board_config = h3_config;
 	omap_board_config_size = ARRAY_SIZE(h3_config);
 	omap_serial_init();
+	omap_register_i2c_bus(1, 100, h3_i2c_board_info,
+			      ARRAY_SIZE(h3_i2c_board_info));
+	h3_mmc_init();
 }
 
 static void __init h3_init_smc91x(void)
 {
 	omap_cfg_reg(W15_1710_GPIO40);
-	if (omap_request_gpio(40) < 0) {
+	if (gpio_request(40, "SMC91x irq") < 0) {
 		printk("Error requesting gpio 40 for smc91x irq\n");
 		return;
 	}

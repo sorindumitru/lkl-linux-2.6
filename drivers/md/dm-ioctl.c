@@ -15,6 +15,7 @@
 #include <linux/slab.h>
 #include <linux/dm-ioctl.h>
 #include <linux/hdreg.h>
+#include <linux/compat.h>
 
 #include <asm/uaccess.h>
 
@@ -232,7 +233,7 @@ static void __hash_remove(struct hash_cell *hc)
 	}
 
 	if (hc->new_map)
-		dm_table_put(hc->new_map);
+		dm_table_destroy(hc->new_map);
 	dm_put(hc->md);
 	free_cell(hc);
 }
@@ -332,6 +333,8 @@ static int dm_hash_rename(const char *old, const char *new)
 		dm_table_put(table);
 	}
 
+	dm_kobject_uevent(hc->md);
+
 	dm_put(hc->md);
 	up_write(&_hash_lock);
 	kfree(old_name);
@@ -423,7 +426,7 @@ static int list_devices(struct dm_ioctl *param, size_t param_size)
 				old_nl->next = (uint32_t) ((void *) nl -
 							   (void *) old_nl);
 			disk = dm_disk(hc->md);
-			nl->dev = huge_encode_dev(MKDEV(disk->major, disk->first_minor));
+			nl->dev = huge_encode_dev(disk_devt(disk));
 			nl->next = 0;
 			strcpy(nl->name, hc->name);
 
@@ -536,7 +539,7 @@ static int __dev_status(struct mapped_device *md, struct dm_ioctl *param)
 	if (dm_suspended(md))
 		param->flags |= DM_SUSPEND_FLAG;
 
-	param->dev = huge_encode_dev(MKDEV(disk->major, disk->first_minor));
+	param->dev = huge_encode_dev(disk_devt(disk));
 
 	/*
 	 * Yes, this will be out of date by the time it gets back
@@ -545,7 +548,7 @@ static int __dev_status(struct mapped_device *md, struct dm_ioctl *param)
 	 */
 	param->open_count = dm_open_count(md);
 
-	if (disk->policy)
+	if (get_disk_ro(disk))
 		param->flags |= DM_READONLY_FLAG;
 
 	param->event_nr = dm_get_event_nr(md);
@@ -700,8 +703,9 @@ static int dev_rename(struct dm_ioctl *param, size_t param_size)
 	int r;
 	char *new_name = (char *) param + param->data_start;
 
-	if (new_name < (char *) (param + 1) ||
-	    invalid_str(new_name, (void *) param + param_size)) {
+	if (new_name < param->data ||
+	    invalid_str(new_name, (void *) param + param_size) ||
+	    strlen(new_name) > DM_NAME_LEN - 1) {
 		DMWARN("Invalid new logical volume name supplied.");
 		return -EINVAL;
 	}
@@ -726,7 +730,7 @@ static int dev_set_geometry(struct dm_ioctl *param, size_t param_size)
 	if (!md)
 		return -ENXIO;
 
-	if (geostr < (char *) (param + 1) ||
+	if (geostr < param->data ||
 	    invalid_str(geostr, (void *) param + param_size)) {
 		DMWARN("Invalid geometry supplied.");
 		goto out;
@@ -824,8 +828,8 @@ static int do_resume(struct dm_ioctl *param)
 
 		r = dm_swap_table(md, new_map);
 		if (r) {
+			dm_table_destroy(new_map);
 			dm_put(md);
-			dm_table_put(new_map);
 			return r;
 		}
 
@@ -833,8 +837,6 @@ static int do_resume(struct dm_ioctl *param)
 			set_disk_ro(dm_disk(md), 0);
 		else
 			set_disk_ro(dm_disk(md), 1);
-
-		dm_table_put(new_map);
 	}
 
 	if (dm_suspended(md))
@@ -985,9 +987,9 @@ static int dev_wait(struct dm_ioctl *param, size_t param_size)
 	return r;
 }
 
-static inline int get_mode(struct dm_ioctl *param)
+static inline fmode_t get_mode(struct dm_ioctl *param)
 {
-	int mode = FMODE_READ | FMODE_WRITE;
+	fmode_t mode = FMODE_READ | FMODE_WRITE;
 
 	if (param->flags & DM_READONLY_FLAG)
 		mode = FMODE_READ;
@@ -1062,7 +1064,7 @@ static int table_load(struct dm_ioctl *param, size_t param_size)
 
 	r = populate_table(t, param, param_size);
 	if (r) {
-		dm_table_put(t);
+		dm_table_destroy(t);
 		goto out;
 	}
 
@@ -1070,14 +1072,14 @@ static int table_load(struct dm_ioctl *param, size_t param_size)
 	hc = dm_get_mdptr(md);
 	if (!hc || hc->md != md) {
 		DMWARN("device has been removed from the dev hash table.");
-		dm_table_put(t);
+		dm_table_destroy(t);
 		up_write(&_hash_lock);
 		r = -ENXIO;
 		goto out;
 	}
 
 	if (hc->new_map)
-		dm_table_put(hc->new_map);
+		dm_table_destroy(hc->new_map);
 	hc->new_map = t;
 	up_write(&_hash_lock);
 
@@ -1106,7 +1108,7 @@ static int table_clear(struct dm_ioctl *param, size_t param_size)
 	}
 
 	if (hc->new_map) {
-		dm_table_put(hc->new_map);
+		dm_table_destroy(hc->new_map);
 		hc->new_map = NULL;
 	}
 
@@ -1128,7 +1130,7 @@ static void retrieve_deps(struct dm_table *table,
 	unsigned int count = 0;
 	struct list_head *tmp;
 	size_t len, needed;
-	struct dm_dev *dd;
+	struct dm_dev_internal *dd;
 	struct dm_target_deps *deps;
 
 	deps = get_result_buffer(param, param_size, &len);
@@ -1154,7 +1156,7 @@ static void retrieve_deps(struct dm_table *table,
 	deps->count = count;
 	count = 0;
 	list_for_each_entry (dd, dm_table_get_devices(table), list)
-		deps->dev[count++] = huge_encode_dev(dd->bdev->bd_dev);
+		deps->dev[count++] = huge_encode_dev(dd->dm_dev.bdev->bd_dev);
 
 	param->data_size = param->data_start + needed;
 }
@@ -1233,7 +1235,7 @@ static int target_message(struct dm_ioctl *param, size_t param_size)
 	if (r)
 		goto out;
 
-	if (tmsg < (struct dm_target_msg *) (param + 1) ||
+	if (tmsg < (struct dm_target_msg *) param->data ||
 	    invalid_str(tmsg->message, (void *) param + param_size)) {
 		DMWARN("Invalid target message parameters.");
 		r = -EINVAL;
@@ -1250,21 +1252,17 @@ static int target_message(struct dm_ioctl *param, size_t param_size)
 	if (!table)
 		goto out_argv;
 
-	if (tmsg->sector >= dm_table_get_size(table)) {
+	ti = dm_table_find_target(table, tmsg->sector);
+	if (!dm_target_is_valid(ti)) {
 		DMWARN("Target message sector outside device.");
 		r = -EINVAL;
-		goto out_table;
-	}
-
-	ti = dm_table_find_target(table, tmsg->sector);
-	if (ti->type->message)
+	} else if (ti->type->message)
 		r = ti->type->message(ti, argc, argv);
 	else {
 		DMWARN("Target type does not support messages");
 		r = -EINVAL;
 	}
 
- out_table:
 	dm_table_put(table);
  out_argv:
 	kfree(argv);
@@ -1352,13 +1350,13 @@ static int copy_params(struct dm_ioctl __user *user, struct dm_ioctl **param)
 {
 	struct dm_ioctl tmp, *dmi;
 
-	if (copy_from_user(&tmp, user, sizeof(tmp)))
+	if (copy_from_user(&tmp, user, sizeof(tmp) - sizeof(tmp.data)))
 		return -EFAULT;
 
-	if (tmp.data_size < sizeof(tmp))
+	if (tmp.data_size < (sizeof(tmp) - sizeof(tmp.data)))
 		return -EINVAL;
 
-	dmi = (struct dm_ioctl *) vmalloc(tmp.data_size);
+	dmi = vmalloc(tmp.data_size);
 	if (!dmi)
 		return -ENOMEM;
 
@@ -1399,13 +1397,11 @@ static int validate_params(uint cmd, struct dm_ioctl *param)
 	return 0;
 }
 
-static int ctl_ioctl(struct inode *inode, struct file *file,
-		     uint command, ulong u)
+static int ctl_ioctl(uint command, struct dm_ioctl __user *user)
 {
 	int r = 0;
 	unsigned int cmd;
-	struct dm_ioctl *param;
-	struct dm_ioctl __user *user = (struct dm_ioctl __user *) u;
+	struct dm_ioctl *uninitialized_var(param);
 	ioctl_fn fn = NULL;
 	size_t param_size;
 
@@ -1473,8 +1469,23 @@ static int ctl_ioctl(struct inode *inode, struct file *file,
 	return r;
 }
 
+static long dm_ctl_ioctl(struct file *file, uint command, ulong u)
+{
+	return (long)ctl_ioctl(command, (struct dm_ioctl __user *)u);
+}
+
+#ifdef CONFIG_COMPAT
+static long dm_compat_ctl_ioctl(struct file *file, uint command, ulong u)
+{
+	return (long)dm_ctl_ioctl(file, command, (ulong) compat_ptr(u));
+}
+#else
+#define dm_compat_ctl_ioctl NULL
+#endif
+
 static const struct file_operations _ctl_fops = {
-	.ioctl	 = ctl_ioctl,
+	.unlocked_ioctl	 = dm_ctl_ioctl,
+	.compat_ioctl = dm_compat_ctl_ioctl,
 	.owner	 = THIS_MODULE,
 };
 
@@ -1514,4 +1525,38 @@ void dm_interface_exit(void)
 		DMERR("misc_deregister failed for control device");
 
 	dm_hash_exit();
+}
+
+/**
+ * dm_copy_name_and_uuid - Copy mapped device name & uuid into supplied buffers
+ * @md: Pointer to mapped_device
+ * @name: Buffer (size DM_NAME_LEN) for name
+ * @uuid: Buffer (size DM_UUID_LEN) for uuid or empty string if uuid not defined
+ */
+int dm_copy_name_and_uuid(struct mapped_device *md, char *name, char *uuid)
+{
+	int r = 0;
+	struct hash_cell *hc;
+
+	if (!md)
+		return -ENXIO;
+
+	dm_get(md);
+	down_read(&_hash_lock);
+	hc = dm_get_mdptr(md);
+	if (!hc || hc->md != md) {
+		r = -ENXIO;
+		goto out;
+	}
+
+	if (name)
+		strcpy(name, hc->name);
+	if (uuid)
+		strcpy(uuid, hc->uuid ? : "");
+
+out:
+	up_read(&_hash_lock);
+	dm_put(md);
+
+	return r;
 }

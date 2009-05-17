@@ -15,16 +15,16 @@
 
 ifndef CONFIG_64BIT
 LDFLAGS		:= -m elf_s390
-CFLAGS		+= -m31
-AFLAGS		+= -m31
+KBUILD_CFLAGS	+= -m31
+KBUILD_AFLAGS	+= -m31
 UTS_MACHINE	:= s390
 STACK_SIZE	:= 8192
-CHECKFLAGS	+= -D__s390__
+CHECKFLAGS	+= -D__s390__ -msize-long
 else
 LDFLAGS		:= -m elf64_s390
 MODFLAGS	+= -fpic -D__PIC__
-CFLAGS		+= -m64
-AFLAGS		+= -m64
+KBUILD_CFLAGS	+= -m64
+KBUILD_AFLAGS	+= -m64
 UTS_MACHINE	:= s390x
 STACK_SIZE	:= 16384
 CHECKFLAGS	+= -D__s390__ -D__s390x__
@@ -34,6 +34,7 @@ cflags-$(CONFIG_MARCH_G5)   += $(call cc-option,-march=g5)
 cflags-$(CONFIG_MARCH_Z900) += $(call cc-option,-march=z900)
 cflags-$(CONFIG_MARCH_Z990) += $(call cc-option,-march=z990)
 cflags-$(CONFIG_MARCH_Z9_109) += $(call cc-option,-march=z9-109)
+cflags-$(CONFIG_MARCH_Z10) += $(call cc-option,-march=z10)
 
 #KBUILD_IMAGE is necessary for make rpm
 KBUILD_IMAGE	:=arch/s390/boot/image
@@ -77,9 +78,9 @@ cflags-$(CONFIG_WARN_STACK) += -mwarn-dynamicstack
 cflags-$(CONFIG_WARN_STACK) += -mwarn-framesize=$(CONFIG_WARN_STACK_SIZE)
 endif
 
-CFLAGS		+= -mbackchain -msoft-float $(cflags-y)
-CFLAGS 		+= -pipe -fno-strength-reduce -Wno-sign-compare 
-AFLAGS		+= $(aflags-y)
+KBUILD_CFLAGS	+= -mbackchain -msoft-float $(cflags-y)
+KBUILD_CFLAGS	+= -pipe -fno-strength-reduce -Wno-sign-compare
+KBUILD_AFLAGS	+= $(aflags-y)
 
 OBJCOPYFLAGS	:= -O binary
 LDFLAGS_vmlinux := -e start
@@ -87,7 +88,7 @@ LDFLAGS_vmlinux := -e start
 head-y		:= arch/s390/kernel/head.o arch/s390/kernel/init_task.o
 
 core-y		+= arch/s390/mm/ arch/s390/kernel/ arch/s390/crypto/ \
-		   arch/s390/appldata/ arch/s390/hypfs/
+		   arch/s390/appldata/ arch/s390/hypfs/ arch/s390/kvm/
 libs-y		+= arch/s390/lib/
 drivers-y	+= drivers/s390/
 drivers-$(CONFIG_MATHEMU) += arch/s390/math-emu/

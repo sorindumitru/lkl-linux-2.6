@@ -29,6 +29,7 @@
 #include <linux/slab.h>
 #include <linux/poll.h>
 #include <linux/fcntl.h>
+#include <linux/freezer.h>
 #include <linux/skbuff.h>
 #include <linux/socket.h>
 #include <linux/ioctl.h>
@@ -42,11 +43,6 @@
 #include <net/bluetooth/l2cap.h>
 
 #include "cmtp.h"
-
-#ifndef CONFIG_BT_CMTP_DEBUG
-#undef  BT_DBG
-#define BT_DBG(D...)
-#endif
 
 #define VERSION "1.0"
 
@@ -287,7 +283,6 @@ static int cmtp_session(void *arg)
 
 	daemonize("kcmtpd_ctr_%d", session->num);
 	set_user_nice(current, -15);
-	current->flags |= PF_NOFREEZE;
 
 	init_waitqueue_entry(&wait, current);
 	add_wait_queue(sk->sk_sleep, &wait);

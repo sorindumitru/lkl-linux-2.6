@@ -4,7 +4,7 @@
  * This is a binary format reader.
  *
  * Copyright (C) 2006 Paolo Abeni (paolo.abeni@email.it)
- * Copyright (C) 2006 Pete Zaitcev (zaitcev@redhat.com)
+ * Copyright (C) 2006,2007 Pete Zaitcev (zaitcev@redhat.com)
  */
 
 #include <linux/kernel.h>
@@ -15,6 +15,7 @@
 #include <linux/poll.h>
 #include <linux/compat.h>
 #include <linux/mm.h>
+#include <linux/smp_lock.h>
 
 #include <asm/uaccess.h>
 
@@ -36,6 +37,7 @@
 #define MON_IOCX_GET   _IOW(MON_IOC_MAGIC, 6, struct mon_bin_get)
 #define MON_IOCX_MFETCH _IOWR(MON_IOC_MAGIC, 7, struct mon_bin_mfetch)
 #define MON_IOCH_MFLUSH _IO(MON_IOC_MAGIC, 8)
+
 #ifdef CONFIG_COMPAT
 #define MON_IOCX_GET32 _IOW(MON_IOC_MAGIC, 6, struct mon_bin_get32)
 #define MON_IOCX_MFETCH32 _IOWR(MON_IOC_MAGIC, 7, struct mon_bin_mfetch32)
@@ -172,6 +174,11 @@ static inline struct mon_bin_hdr *MON_OFF2HDR(const struct mon_reader_bin *rp,
 
 #define MON_RING_EMPTY(rp)	((rp)->b_cnt == 0)
 
+static unsigned char xfer_to_pipe[4] = {
+	PIPE_CONTROL, PIPE_ISOCHRONOUS, PIPE_BULK, PIPE_INTERRUPT
+};
+
+static struct class *mon_bin_class;
 static dev_t mon_bin_dev0;
 static struct cdev mon_bin_cdev;
 
@@ -353,13 +360,9 @@ static inline char mon_bin_get_setup(unsigned char *setupb,
     const struct urb *urb, char ev_type)
 {
 
-	if (!usb_pipecontrol(urb->pipe) || ev_type != 'S')
+	if (!usb_endpoint_xfer_control(&urb->ep->desc) || ev_type != 'S')
 		return '-';
 
-	if (urb->dev->bus->uses_dma &&
-	    (urb->transfer_flags & URB_NO_SETUP_DMA_MAP)) {
-		return mon_dmapeek(setupb, urb->setup_dma, SETUP_LEN);
-	}
 	if (urb->setup_packet == NULL)
 		return 'Z';
 
@@ -385,13 +388,15 @@ static char mon_bin_get_data(const struct mon_reader_bin *rp,
 }
 
 static void mon_bin_event(struct mon_reader_bin *rp, struct urb *urb,
-    char ev_type)
+    char ev_type, int status)
 {
+	const struct usb_endpoint_descriptor *epd = &urb->ep->desc;
 	unsigned long flags;
 	struct timeval ts;
 	unsigned int urb_length;
 	unsigned int offset;
 	unsigned int length;
+	unsigned char dir;
 	struct mon_bin_hdr *ep;
 	char data_tag = 0;
 
@@ -409,16 +414,19 @@ static void mon_bin_event(struct mon_reader_bin *rp, struct urb *urb,
 	if (length >= rp->b_size/5)
 		length = rp->b_size/5;
 
-	if (usb_pipein(urb->pipe)) {
+	if (usb_urb_dir_in(urb)) {
 		if (ev_type == 'S') {
 			length = 0;
 			data_tag = '<';
 		}
+		/* Cannot rely on endpoint number in case of control ep.0 */
+		dir = USB_DIR_IN;
 	} else {
 		if (ev_type == 'C') {
 			length = 0;
 			data_tag = '>';
 		}
+		dir = 0;
 	}
 
 	if (rp->mmap_active)
@@ -439,15 +447,14 @@ static void mon_bin_event(struct mon_reader_bin *rp, struct urb *urb,
 	 */
 	memset(ep, 0, PKT_SIZE);
 	ep->type = ev_type;
-	ep->xfer_type = usb_pipetype(urb->pipe);
-	/* We use the fact that usb_pipein() returns 0x80 */
-	ep->epnum = usb_pipeendpoint(urb->pipe) | usb_pipein(urb->pipe);
-	ep->devnum = usb_pipedevice(urb->pipe);
+	ep->xfer_type = xfer_to_pipe[usb_endpoint_type(epd)];
+	ep->epnum = dir | usb_endpoint_num(epd);
+	ep->devnum = urb->dev->devnum;
 	ep->busnum = urb->dev->bus->busnum;
 	ep->id = (unsigned long) urb;
 	ep->ts_sec = ts.tv_sec;
 	ep->ts_usec = ts.tv_usec;
-	ep->status = urb->status;
+	ep->status = status;
 	ep->len_urb = urb_length;
 	ep->len_cap = length;
 
@@ -470,13 +477,13 @@ static void mon_bin_event(struct mon_reader_bin *rp, struct urb *urb,
 static void mon_bin_submit(void *data, struct urb *urb)
 {
 	struct mon_reader_bin *rp = data;
-	mon_bin_event(rp, urb, 'S');
+	mon_bin_event(rp, urb, 'S', -EINPROGRESS);
 }
 
-static void mon_bin_complete(void *data, struct urb *urb)
+static void mon_bin_complete(void *data, struct urb *urb, int status)
 {
 	struct mon_reader_bin *rp = data;
-	mon_bin_event(rp, urb, 'C');
+	mon_bin_event(rp, urb, 'C', status);
 }
 
 static void mon_bin_error(void *data, struct urb *urb, int error)
@@ -499,10 +506,10 @@ static void mon_bin_error(void *data, struct urb *urb, int error)
 
 	memset(ep, 0, PKT_SIZE);
 	ep->type = 'E';
-	ep->xfer_type = usb_pipetype(urb->pipe);
-	/* We use the fact that usb_pipein() returns 0x80 */
-	ep->epnum = usb_pipeendpoint(urb->pipe) | usb_pipein(urb->pipe);
-	ep->devnum = usb_pipedevice(urb->pipe);
+	ep->xfer_type = xfer_to_pipe[usb_endpoint_type(&urb->ep->desc)];
+	ep->epnum = usb_urb_dir_in(urb) ? USB_DIR_IN : 0;
+	ep->epnum |= usb_endpoint_num(&urb->ep->desc);
+	ep->devnum = urb->dev->devnum;
 	ep->busnum = urb->dev->bus->busnum;
 	ep->id = (unsigned long) urb;
 	ep->status = error;
@@ -522,14 +529,17 @@ static int mon_bin_open(struct inode *inode, struct file *file)
 	size_t size;
 	int rc;
 
+	lock_kernel();
 	mutex_lock(&mon_lock);
 	if ((mbus = mon_bus_lookup(iminor(inode))) == NULL) {
 		mutex_unlock(&mon_lock);
+		unlock_kernel();
 		return -ENODEV;
 	}
 	if (mbus != &mon_bus0 && mbus->u_bus == NULL) {
 		printk(KERN_ERR TAG ": consistency error on open\n");
 		mutex_unlock(&mon_lock);
+		unlock_kernel();
 		return -ENODEV;
 	}
 
@@ -563,6 +573,7 @@ static int mon_bin_open(struct inode *inode, struct file *file)
 
 	file->private_data = rp;
 	mutex_unlock(&mon_lock);
+	unlock_kernel();
 	return 0;
 
 err_allocbuff:
@@ -571,6 +582,7 @@ err_allocvec:
 	kfree(rp);
 err_alloc:
 	mutex_unlock(&mon_lock);
+	unlock_kernel();
 	return rc;
 }
 
@@ -676,7 +688,10 @@ static ssize_t mon_bin_read(struct file *file, char __user *buf,
 	}
 
 	if (rp->b_read >= sizeof(struct mon_bin_hdr)) {
-		step_len = min(nbytes, (size_t)ep->len_cap);
+		step_len = ep->len_cap;
+		step_len -= rp->b_read - sizeof(struct mon_bin_hdr);
+		if (step_len > nbytes)
+			step_len = nbytes;
 		offset = rp->b_out + PKT_SIZE;
 		offset += rp->b_read - sizeof(struct mon_bin_hdr);
 		if (offset >= rp->b_size)
@@ -907,21 +922,6 @@ static int mon_bin_ioctl(struct inode *inode, struct file *file,
 		}
 		break;
 
-#ifdef CONFIG_COMPAT
-	case MON_IOCX_GET32: {
-		struct mon_bin_get32 getb;
-
-		if (copy_from_user(&getb, (void __user *)arg,
-					    sizeof(struct mon_bin_get32)))
-			return -EFAULT;
-
-		ret = mon_bin_get_event(file, rp,
-		    compat_ptr(getb.hdr32), compat_ptr(getb.data32),
-		    getb.alloc32);
-		}
-		break;
-#endif
-
 	case MON_IOCX_MFETCH:
 		{
 		struct mon_bin_mfetch mfetch;
@@ -947,35 +947,6 @@ static int mon_bin_ioctl(struct inode *inode, struct file *file,
 		ret = 0;
 		}
 		break;
-
-#ifdef CONFIG_COMPAT
-	case MON_IOCX_MFETCH32:
-		{
-		struct mon_bin_mfetch32 mfetch;
-		struct mon_bin_mfetch32 __user *uptr;
-
-		uptr = (struct mon_bin_mfetch32 __user *) compat_ptr(arg);
-
-		if (copy_from_user(&mfetch, uptr, sizeof(mfetch)))
-			return -EFAULT;
-
-		if (mfetch.nflush32) {
-			ret = mon_bin_flush(rp, mfetch.nflush32);
-			if (ret < 0)
-				return ret;
-			if (put_user(ret, &uptr->nflush32))
-				return -EFAULT;
-		}
-		ret = mon_bin_fetch(file, rp, compat_ptr(mfetch.offvec32),
-		    mfetch.nfetch32);
-		if (ret < 0)
-			return ret;
-		if (put_user(ret, &uptr->nfetch32))
-			return -EFAULT;
-		ret = 0;
-		}
-		break;
-#endif
 
 	case MON_IOCG_STATS: {
 		struct mon_bin_stats __user *sp;
@@ -1003,6 +974,73 @@ static int mon_bin_ioctl(struct inode *inode, struct file *file,
 
 	return ret;
 }
+
+#ifdef CONFIG_COMPAT
+static long mon_bin_compat_ioctl(struct file *file,
+    unsigned int cmd, unsigned long arg)
+{
+	struct mon_reader_bin *rp = file->private_data;
+	int ret;
+
+	switch (cmd) {
+
+	case MON_IOCX_GET32: {
+		struct mon_bin_get32 getb;
+
+		if (copy_from_user(&getb, (void __user *)arg,
+					    sizeof(struct mon_bin_get32)))
+			return -EFAULT;
+
+		ret = mon_bin_get_event(file, rp,
+		    compat_ptr(getb.hdr32), compat_ptr(getb.data32),
+		    getb.alloc32);
+		if (ret < 0)
+			return ret;
+		}
+		return 0;
+
+	case MON_IOCX_MFETCH32:
+		{
+		struct mon_bin_mfetch32 mfetch;
+		struct mon_bin_mfetch32 __user *uptr;
+
+		uptr = (struct mon_bin_mfetch32 __user *) compat_ptr(arg);
+
+		if (copy_from_user(&mfetch, uptr, sizeof(mfetch)))
+			return -EFAULT;
+
+		if (mfetch.nflush32) {
+			ret = mon_bin_flush(rp, mfetch.nflush32);
+			if (ret < 0)
+				return ret;
+			if (put_user(ret, &uptr->nflush32))
+				return -EFAULT;
+		}
+		ret = mon_bin_fetch(file, rp, compat_ptr(mfetch.offvec32),
+		    mfetch.nfetch32);
+		if (ret < 0)
+			return ret;
+		if (put_user(ret, &uptr->nfetch32))
+			return -EFAULT;
+		}
+		return 0;
+
+	case MON_IOCG_STATS:
+		return mon_bin_ioctl(NULL, file, cmd,
+					    (unsigned long) compat_ptr(arg));
+
+	case MON_IOCQ_URB_LEN:
+	case MON_IOCQ_RING_SIZE:
+	case MON_IOCT_RING_SIZE:
+	case MON_IOCH_MFLUSH:
+		return mon_bin_ioctl(NULL, file, cmd, arg);
+
+	default:
+		;
+	}
+	return -ENOTTY;
+}
+#endif /* CONFIG_COMPAT */
 
 static unsigned int
 mon_bin_poll(struct file *file, struct poll_table_struct *wait)
@@ -1040,33 +1078,31 @@ static void mon_bin_vma_close(struct vm_area_struct *vma)
 /*
  * Map ring pages to user space.
  */
-struct page *mon_bin_vma_nopage(struct vm_area_struct *vma,
-                                unsigned long address, int *type)
+static int mon_bin_vma_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 {
 	struct mon_reader_bin *rp = vma->vm_private_data;
 	unsigned long offset, chunk_idx;
 	struct page *pageptr;
 
-	offset = (address - vma->vm_start) + (vma->vm_pgoff << PAGE_SHIFT);
+	offset = vmf->pgoff << PAGE_SHIFT;
 	if (offset >= rp->b_size)
-		return NOPAGE_SIGBUS;
+		return VM_FAULT_SIGBUS;
 	chunk_idx = offset / CHUNK_SIZE;
 	pageptr = rp->b_vec[chunk_idx].pg;
 	get_page(pageptr);
-	if (type)
-		*type = VM_FAULT_MINOR;
-	return pageptr;
+	vmf->page = pageptr;
+	return 0;
 }
 
-struct vm_operations_struct mon_bin_vm_ops = {
+static struct vm_operations_struct mon_bin_vm_ops = {
 	.open =     mon_bin_vma_open,
 	.close =    mon_bin_vma_close,
-	.nopage =   mon_bin_vma_nopage,
+	.fault =    mon_bin_vma_fault,
 };
 
-int mon_bin_mmap(struct file *filp, struct vm_area_struct *vma)
+static int mon_bin_mmap(struct file *filp, struct vm_area_struct *vma)
 {
-	/* don't do anything here: "nopage" will set up page table entries */
+	/* don't do anything here: "fault" will set up page table entries */
 	vma->vm_ops = &mon_bin_vm_ops;
 	vma->vm_flags |= VM_RESERVED;
 	vma->vm_private_data = filp->private_data;
@@ -1074,7 +1110,7 @@ int mon_bin_mmap(struct file *filp, struct vm_area_struct *vma)
 	return 0;
 }
 
-struct file_operations mon_fops_binary = {
+static const struct file_operations mon_fops_binary = {
 	.owner =	THIS_MODULE,
 	.open =		mon_bin_open,
 	.llseek =	no_llseek,
@@ -1082,7 +1118,11 @@ struct file_operations mon_fops_binary = {
 	/* .write =	mon_text_write, */
 	.poll =		mon_bin_poll,
 	.ioctl =	mon_bin_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl =	mon_bin_compat_ioctl,
+#endif
 	.release =	mon_bin_release,
+	.mmap =		mon_bin_mmap,
 };
 
 static int mon_bin_wait_event(struct file *file, struct mon_reader_bin *rp)
@@ -1144,9 +1184,38 @@ static void mon_free_buff(struct mon_pgmap *map, int npages)
 		free_page((unsigned long) map[n].ptr);
 }
 
+int mon_bin_add(struct mon_bus *mbus, const struct usb_bus *ubus)
+{
+	struct device *dev;
+	unsigned minor = ubus? ubus->busnum: 0;
+
+	if (minor >= MON_BIN_MAX_MINOR)
+		return 0;
+
+	dev = device_create(mon_bin_class, ubus ? ubus->controller : NULL,
+			    MKDEV(MAJOR(mon_bin_dev0), minor), NULL,
+			    "usbmon%d", minor);
+	if (IS_ERR(dev))
+		return 0;
+
+	mbus->classdev = dev;
+	return 1;
+}
+
+void mon_bin_del(struct mon_bus *mbus)
+{
+	device_destroy(mon_bin_class, mbus->classdev->devt);
+}
+
 int __init mon_bin_init(void)
 {
 	int rc;
+
+	mon_bin_class = class_create(THIS_MODULE, "usbmon");
+	if (IS_ERR(mon_bin_class)) {
+		rc = PTR_ERR(mon_bin_class);
+		goto err_class;
+	}
 
 	rc = alloc_chrdev_region(&mon_bin_dev0, 0, MON_BIN_MAX_MINOR, "usbmon");
 	if (rc < 0)
@@ -1164,6 +1233,8 @@ int __init mon_bin_init(void)
 err_add:
 	unregister_chrdev_region(mon_bin_dev0, MON_BIN_MAX_MINOR);
 err_dev:
+	class_destroy(mon_bin_class);
+err_class:
 	return rc;
 }
 
@@ -1171,4 +1242,5 @@ void mon_bin_exit(void)
 {
 	cdev_del(&mon_bin_cdev);
 	unregister_chrdev_region(mon_bin_dev0, MON_BIN_MAX_MINOR);
+	class_destroy(mon_bin_class);
 }

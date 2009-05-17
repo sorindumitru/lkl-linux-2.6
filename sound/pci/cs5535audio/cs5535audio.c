@@ -21,7 +21,6 @@
  *
  */
 
-#include <sound/driver.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/init.h>
@@ -145,7 +144,7 @@ static unsigned short snd_cs5535audio_ac97_codec_read(struct snd_ac97 *ac97,
 	return snd_cs5535audio_codec_read(cs5535au, reg);
 }
 
-static int snd_cs5535audio_mixer(struct cs5535audio *cs5535au)
+static int __devinit snd_cs5535audio_mixer(struct cs5535audio *cs5535au)
 {
 	struct snd_card *card = cs5535au->card;
 	struct snd_ac97_bus *pbus;
@@ -160,9 +159,13 @@ static int snd_cs5535audio_mixer(struct cs5535audio *cs5535au)
 		return err;
 
 	memset(&ac97, 0, sizeof(ac97));
-	ac97.scaps = AC97_SCAP_AUDIO|AC97_SCAP_SKIP_MODEM;
+	ac97.scaps = AC97_SCAP_AUDIO | AC97_SCAP_SKIP_MODEM
+			| AC97_SCAP_POWER_SAVE;
 	ac97.private_data = cs5535au;
 	ac97.pci = cs5535au->pci;
+
+	/* set any OLPC-specific scaps */
+	olpc_prequirks(card, &ac97);
 
 	if ((err = snd_ac97_mixer(pbus, &ac97, &cs5535au->ac97)) < 0) {
 		snd_printk(KERN_ERR "mixer failed\n");
@@ -170,6 +173,12 @@ static int snd_cs5535audio_mixer(struct cs5535audio *cs5535au)
 	}
 
 	snd_ac97_tune_hardware(cs5535au->ac97, ac97_quirks, ac97_quirk);
+
+	err = olpc_quirks(card, cs5535au->ac97);
+	if (err < 0) {
+		snd_printk(KERN_ERR "olpc quirks failed\n");
+		return err;
+	}
 
 	return 0;
 }
@@ -206,7 +215,6 @@ static void process_bm1_irq(struct cs5535audio *cs5535au)
 static irqreturn_t snd_cs5535audio_interrupt(int irq, void *dev_id)
 {
 	u16 acc_irq_stat;
-	u8 bm_stat;
 	unsigned char count;
 	struct cs5535audio *cs5535au = dev_id;
 
@@ -217,7 +225,7 @@ static irqreturn_t snd_cs5535audio_interrupt(int irq, void *dev_id)
 
 	if (!acc_irq_stat)
 		return IRQ_NONE;
-	for (count = 0; count < 10; count++) {
+	for (count = 0; count < 4; count++) {
 		if (acc_irq_stat & (1 << count)) {
 			switch (count) {
 			case IRQ_STS:
@@ -232,26 +240,9 @@ static irqreturn_t snd_cs5535audio_interrupt(int irq, void *dev_id)
 			case BM1_IRQ_STS:
 				process_bm1_irq(cs5535au);
 				break;
-			case BM2_IRQ_STS:
-				bm_stat = cs_readb(cs5535au, ACC_BM2_STATUS);
-				break;
-			case BM3_IRQ_STS:
-				bm_stat = cs_readb(cs5535au, ACC_BM3_STATUS);
-				break;
-			case BM4_IRQ_STS:
-				bm_stat = cs_readb(cs5535au, ACC_BM4_STATUS);
-				break;
-			case BM5_IRQ_STS:
-				bm_stat = cs_readb(cs5535au, ACC_BM5_STATUS);
-				break;
-			case BM6_IRQ_STS:
-				bm_stat = cs_readb(cs5535au, ACC_BM6_STATUS);
-				break;
-			case BM7_IRQ_STS:
-				bm_stat = cs_readb(cs5535au, ACC_BM7_STATUS);
-				break;
 			default:
-				snd_printk(KERN_ERR "Unexpected irq src\n");
+				snd_printk(KERN_ERR "Unexpected irq src: "
+						"0x%x\n", acc_irq_stat);
 				break;
 			}
 		}

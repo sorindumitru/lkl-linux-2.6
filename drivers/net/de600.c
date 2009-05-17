@@ -154,11 +154,6 @@ static int de600_close(struct net_device *dev)
 	return 0;
 }
 
-static struct net_device_stats *get_stats(struct net_device *dev)
-{
-	return (struct net_device_stats *)(dev->priv);
-}
-
 static inline void trigger_interrupt(struct net_device *dev)
 {
 	de600_put_command(FLIP_IRQ);
@@ -308,7 +303,7 @@ static int de600_tx_intr(struct net_device *dev, int irq_status)
 	if (!(irq_status & TX_FAILED16)) {
 		tx_fifo_out = (tx_fifo_out + 1) % TX_PAGES;
 		++free_tx_pages;
-		((struct net_device_stats *)(dev->priv))->tx_packets++;
+		dev->stats.tx_packets++;
 		netif_wake_queue(dev);
 	}
 
@@ -374,9 +369,8 @@ static void de600_rx_intr(struct net_device *dev)
 	netif_rx(skb);
 
 	/* update stats */
-	dev->last_rx = jiffies;
-	((struct net_device_stats *)(dev->priv))->rx_packets++; /* count all receives */
-	((struct net_device_stats *)(dev->priv))->rx_bytes += size; /* count all received bytes */
+	dev->stats.rx_packets++; /* count all receives */
+	dev->stats.rx_bytes += size; /* count all received bytes */
 
 	/*
 	 * If any worth-while packets have been received, netif_rx()
@@ -384,17 +378,26 @@ static void de600_rx_intr(struct net_device *dev)
 	 */
 }
 
+static const struct net_device_ops de600_netdev_ops = {
+	.ndo_open		= de600_open,
+	.ndo_stop		= de600_close,
+	.ndo_start_xmit		= de600_start_xmit,
+	.ndo_change_mtu		= eth_change_mtu,
+	.ndo_set_mac_address 	= eth_mac_addr,
+	.ndo_validate_addr	= eth_validate_addr,
+};
+
+
 static struct net_device * __init de600_probe(void)
 {
 	int	i;
 	struct net_device *dev;
 	int err;
 
-	dev = alloc_etherdev(sizeof(struct net_device_stats));
+	dev = alloc_etherdev(0);
 	if (!dev)
 		return ERR_PTR(-ENOMEM);
 
-	SET_MODULE_OWNER(dev);
 
 	if (!request_region(DE600_IO, 3, "de600")) {
 		printk(KERN_WARNING "DE600: port 0x%x busy\n", DE600_IO);
@@ -444,16 +447,9 @@ static struct net_device * __init de600_probe(void)
 		goto out1;
 	}
 
-	printk(", Ethernet Address: %02X", dev->dev_addr[0]);
-	for (i = 1; i < ETH_ALEN; i++)
-		printk(":%02X",dev->dev_addr[i]);
-	printk("\n");
+	printk(", Ethernet Address: %pM\n", dev->dev_addr);
 
-	dev->get_stats = get_stats;
-
-	dev->open = de600_open;
-	dev->stop = de600_close;
-	dev->hard_start_xmit = &de600_start_xmit;
+	dev->netdev_ops = &de600_netdev_ops;
 
 	dev->flags&=~IFF_MULTICAST;
 

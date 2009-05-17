@@ -79,14 +79,11 @@ struct net_device * __init mvme147lance_probe(int unit)
 	if (unit >= 0)
 		sprintf(dev->name, "eth%d", unit);
 
-	SET_MODULE_OWNER(dev);
-
 	/* Fill the dev fields */
 	dev->base_addr = (unsigned long)MVME147_LANCE_BASE;
 	dev->open = &m147lance_open;
 	dev->stop = &m147lance_close;
 	dev->hard_start_xmit = &lance_start_xmit;
-	dev->get_stats = &lance_get_stats;
 	dev->set_multicast_list = &lance_set_multicast;
 	dev->tx_timeout = &lance_tx_timeout;
 	dev->dma = 0;
@@ -103,14 +100,12 @@ struct net_device * __init mvme147lance_probe(int unit)
 	address=address>>8;
 	dev->dev_addr[3]=address&0xff;
 
-	printk("%s: MVME147 at 0x%08lx, irq %d, Hardware Address %02x:%02x:%02x:%02x:%02x:%02x\n",
-		dev->name, dev->base_addr, MVME147_LANCE_IRQ,
-		dev->dev_addr[0],
-		dev->dev_addr[1], dev->dev_addr[2],
-		dev->dev_addr[3], dev->dev_addr[4],
-		dev->dev_addr[5]);
+	printk("%s: MVME147 at 0x%08lx, irq %d, "
+	       "Hardware Address %pM\n",
+	       dev->name, dev->base_addr, MVME147_LANCE_IRQ,
+	       dev->dev_addr);
 
-	lp = (struct m147lance_private *)dev->priv;
+	lp = netdev_priv(dev);
 	lp->ram = __get_dma_pages(GFP_ATOMIC, 3);	/* 16K */
 	if (!lp->ram)
 	{
@@ -194,7 +189,7 @@ int __init init_module(void)
 
 void __exit cleanup_module(void)
 {
-	struct m147lance_private *lp = dev_mvme147_lance->priv;
+	struct m147lance_private *lp = netdev_priv(dev_mvme147_lance);
 	unregister_netdev(dev_mvme147_lance);
 	free_pages(lp->ram, 3);
 	free_netdev(dev_mvme147_lance);

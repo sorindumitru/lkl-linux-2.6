@@ -46,29 +46,14 @@
 /* Mac bootinfo struct */
 
 struct mac_booter_data mac_bi_data;
-int mac_bisize = sizeof mac_bi_data;
-
-struct mac_hw_present mac_hw_present;
-
-/* New m68k bootinfo stuff and videobase */
-
-extern int m68k_num_memory;
-extern struct mem_info m68k_memory[NUM_MEMINFO];
-
-extern struct mem_info m68k_ramdisk;
-
-extern char m68k_command_line[CL_SIZE];
-
-void *mac_env;					/* Loaded by the boot asm */
 
 /* The phys. video addr. - might be bogus on some machines */
-unsigned long mac_orig_videoaddr;
+static unsigned long mac_orig_videoaddr;
 
 /* Mac specific timer functions */
 extern unsigned long mac_gettimeoffset(void);
 extern int mac_hwclk(int, struct rtc_time *);
 extern int mac_set_clock_mmss(unsigned long);
-extern int show_mac_interrupts(struct seq_file *, void *);
 extern void iop_preinit(void);
 extern void iop_init(void);
 extern void via_init(void);
@@ -83,8 +68,10 @@ extern void mac_mksound(unsigned int, unsigned int);
 extern void nubus_sweep_video(void);
 
 static void mac_get_model(char *str);
+static void mac_identify(void);
+static void mac_report_hardware(void);
 
-static void mac_sched_init(irq_handler_t vector)
+static void __init mac_sched_init(irq_handler_t vector)
 {
 	via_init_clock(vector);
 }
@@ -167,10 +154,7 @@ void __init config_mac(void)
 	mach_init_IRQ = mac_init_IRQ;
 	mach_get_model = mac_get_model;
 	mach_gettimeoffset = mac_gettimeoffset;
-#warning move to adb/via init
-#if 0
 	mach_hwclk = mac_hwclk;
-#endif
 	mach_set_clock_mmss = mac_set_clock_mmss;
 	mach_reset = mac_reset;
 	mach_halt = mac_poweroff;
@@ -283,7 +267,7 @@ static struct mac_model mac_data_table[] = {
 	},
 
 	/*
-	 *	Weirdified MacII hardware - all subtley different. Gee thanks
+	 *	Weirdified MacII hardware - all subtly different. Gee thanks
 	 *	Apple. All these boxes seem to have VIA2 in a different place to
 	 *	the MacII (+1A000 rather than +4000)
 	 * CSA: see http://developer.apple.com/technotes/hw/hw_09.html
@@ -706,7 +690,7 @@ static struct mac_model mac_data_table[] = {
 	 * All of these probably have onboard SONIC in the Dock which
 	 * means we'll have to probe for it eventually.
 	 *
-	 * Are these reallly MAC_VIA_IIci? The developer notes for the
+	 * Are these really MAC_VIA_IIci? The developer notes for the
 	 * Duos show pretty much the same custom parts as in most of
 	 * the other PowerBooks which would imply MAC_VIA_QUADRA.
 	 */
@@ -769,7 +753,7 @@ static struct mac_model mac_data_table[] = {
 	}
 };
 
-void mac_identify(void)
+static void __init mac_identify(void)
 {
 	struct mac_model *m;
 
@@ -813,31 +797,6 @@ void mac_identify(void)
 		mac_bi_data.boottime, mac_bi_data.gmtbias);
 	printk(KERN_DEBUG " Machine ID: %ld CPUid: 0x%lx memory size: 0x%lx \n",
 		mac_bi_data.id, mac_bi_data.cpuid, mac_bi_data.memsize);
-#if 0
-	printk("Ramdisk: addr 0x%lx size 0x%lx\n",
-		m68k_ramdisk.addr, m68k_ramdisk.size);
-#endif
-
-	/*
-	 * TODO: set the various fields in macintosh_config->hw_present here!
-	 */
-	switch (macintosh_config->scsi_type) {
-	case MAC_SCSI_OLD:
-		MACHW_SET(MAC_SCSI_80);
-		break;
-	case MAC_SCSI_QUADRA:
-	case MAC_SCSI_QUADRA2:
-	case MAC_SCSI_QUADRA3:
-		MACHW_SET(MAC_SCSI_96);
-		if ((macintosh_config->ident == MAC_MODEL_Q900) ||
-		    (macintosh_config->ident == MAC_MODEL_Q950))
-			MACHW_SET(MAC_SCSI_96_2);
-		break;
-	default:
-		printk(KERN_WARNING "config.c: wtf: unknown scsi, using 53c80\n");
-		MACHW_SET(MAC_SCSI_80);
-		break;
-	}
 
 	iop_init();
 	via_init();
@@ -846,7 +805,7 @@ void mac_identify(void)
 	baboon_init();
 }
 
-void mac_report_hardware(void)
+static void __init mac_report_hardware(void)
 {
 	printk(KERN_INFO "Apple Macintosh %s\n", macintosh_config->name);
 }

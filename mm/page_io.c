@@ -44,13 +44,10 @@ static struct bio *get_swap_bio(gfp_t gfp_flags, pgoff_t index,
 	return bio;
 }
 
-static int end_swap_bio_write(struct bio *bio, unsigned int bytes_done, int err)
+static void end_swap_bio_write(struct bio *bio, int err)
 {
 	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	struct page *page = bio->bi_io_vec[0].bv_page;
-
-	if (bio->bi_size)
-		return 1;
 
 	if (!uptodate) {
 		SetPageError(page);
@@ -71,16 +68,12 @@ static int end_swap_bio_write(struct bio *bio, unsigned int bytes_done, int err)
 	}
 	end_page_writeback(page);
 	bio_put(bio);
-	return 0;
 }
 
-int end_swap_bio_read(struct bio *bio, unsigned int bytes_done, int err)
+void end_swap_bio_read(struct bio *bio, int err)
 {
 	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
 	struct page *page = bio->bi_io_vec[0].bv_page;
-
-	if (bio->bi_size)
-		return 1;
 
 	if (!uptodate) {
 		SetPageError(page);
@@ -94,7 +87,6 @@ int end_swap_bio_read(struct bio *bio, unsigned int bytes_done, int err)
 	}
 	unlock_page(page);
 	bio_put(bio);
-	return 0;
 }
 
 /*
@@ -106,7 +98,7 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
 	struct bio *bio;
 	int ret = 0, rw = WRITE;
 
-	if (remove_exclusive_swap_page(page)) {
+	if (try_to_free_swap(page)) {
 		unlock_page(page);
 		goto out;
 	}
@@ -119,7 +111,7 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
 		goto out;
 	}
 	if (wbc->sync_mode == WB_SYNC_ALL)
-		rw |= (1 << BIO_RW_SYNC);
+		rw |= (1 << BIO_RW_SYNCIO) | (1 << BIO_RW_UNPLUG);
 	count_vm_event(PSWPOUT);
 	set_page_writeback(page);
 	unlock_page(page);
@@ -133,8 +125,8 @@ int swap_readpage(struct file *file, struct page *page)
 	struct bio *bio;
 	int ret = 0;
 
-	BUG_ON(!PageLocked(page));
-	ClearPageUptodate(page);
+	VM_BUG_ON(!PageLocked(page));
+	VM_BUG_ON(PageUptodate(page));
 	bio = get_swap_bio(GFP_KERNEL, page_private(page), page,
 				end_swap_bio_read);
 	if (bio == NULL) {

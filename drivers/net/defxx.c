@@ -200,6 +200,7 @@
 
 /* Include files */
 #include <linux/bitops.h>
+#include <linux/compiler.h>
 #include <linux/delay.h>
 #include <linux/dma-mapping.h>
 #include <linux/eisa.h>
@@ -239,8 +240,6 @@ static char version[] __devinitdata =
  * alignment for compatibility with old EISA boards.
  */
 #define NEW_SKB_SIZE (PI_RCV_DATA_K_SIZE_MAX+128)
-
-#define __unused __attribute__ ((unused))
 
 #ifdef CONFIG_PCI
 #define DFX_BUS_PCI(dev) (dev->bus == &pci_bus_type)
@@ -375,7 +374,7 @@ static inline void dfx_outl(DFX_board_t *bp, int offset, u32 data)
 
 static void dfx_port_write_long(DFX_board_t *bp, int offset, u32 data)
 {
-	struct device __unused *bdev = bp->bus_dev;
+	struct device __maybe_unused *bdev = bp->bus_dev;
 	int dfx_bus_tc = DFX_BUS_TC(bdev);
 	int dfx_use_mmio = DFX_MMIO || dfx_bus_tc;
 
@@ -399,7 +398,7 @@ static inline void dfx_inl(DFX_board_t *bp, int offset, u32 *data)
 
 static void dfx_port_read_long(DFX_board_t *bp, int offset, u32 *data)
 {
-	struct device __unused *bdev = bp->bus_dev;
+	struct device __maybe_unused *bdev = bp->bus_dev;
 	int dfx_bus_tc = DFX_BUS_TC(bdev);
 	int dfx_use_mmio = DFX_MMIO || dfx_bus_tc;
 
@@ -478,6 +477,15 @@ static void dfx_get_bars(struct device *bdev,
 	}
 }
 
+static const struct net_device_ops dfx_netdev_ops = {
+	.ndo_open		= dfx_open,
+	.ndo_stop		= dfx_close,
+	.ndo_start_xmit		= dfx_xmt_queue_pkt,
+	.ndo_get_stats		= dfx_ctl_get_stats,
+	.ndo_set_multicast_list	= dfx_ctl_set_multicast_list,
+	.ndo_set_mac_address	= dfx_ctl_set_mac_address,
+};
+
 /*
  * ================
  * = dfx_register =
@@ -512,7 +520,7 @@ static int __devinit dfx_register(struct device *bdev)
 	int dfx_bus_pci = DFX_BUS_PCI(bdev);
 	int dfx_bus_tc = DFX_BUS_TC(bdev);
 	int dfx_use_mmio = DFX_MMIO || dfx_bus_tc;
-	char *print_name = bdev->bus_id;
+	const char *print_name = dev_name(bdev);
 	struct net_device *dev;
 	DFX_board_t	  *bp;			/* board pointer */
 	resource_size_t bar_start = 0;		/* pointer to port */
@@ -540,7 +548,6 @@ static int __devinit dfx_register(struct device *bdev)
 		goto err_out;
 	}
 
-	SET_MODULE_OWNER(dev);
 	SET_NETDEV_DEV(dev, bdev);
 
 	bp = netdev_priv(dev);
@@ -575,13 +582,7 @@ static int __devinit dfx_register(struct device *bdev)
 	}
 
 	/* Initialize new device structure */
-
-	dev->get_stats			= dfx_ctl_get_stats;
-	dev->open			= dfx_open;
-	dev->stop			= dfx_close;
-	dev->hard_start_xmit		= dfx_xmt_queue_pkt;
-	dev->set_multicast_list		= dfx_ctl_set_multicast_list;
-	dev->set_mac_address		= dfx_ctl_set_mac_address;
+	dev->netdev_ops			= &dfx_netdev_ops;
 
 	if (dfx_bus_pci)
 		pci_set_master(to_pci_dev(bdev));
@@ -807,7 +808,7 @@ static void __devinit dfx_bus_init(struct net_device *dev)
  *   Interrupts are disabled at the adapter bus-specific logic.
  */
 
-static void __devinit dfx_bus_uninit(struct net_device *dev)
+static void __devexit dfx_bus_uninit(struct net_device *dev)
 {
 	DFX_board_t *bp = netdev_priv(dev);
 	struct device *bdev = bp->bus_dev;
@@ -866,7 +867,7 @@ static void __devinit dfx_bus_uninit(struct net_device *dev)
 
 static void __devinit dfx_bus_config_check(DFX_board_t *bp)
 {
-	struct device __unused *bdev = bp->bus_dev;
+	struct device __maybe_unused *bdev = bp->bus_dev;
 	int dfx_bus_eisa = DFX_BUS_EISA(bdev);
 	int	status;				/* return code from adapter port control call */
 	u32	host_data;			/* LW data returned from port control call */
@@ -973,7 +974,8 @@ static int __devinit dfx_driver_init(struct net_device *dev,
 	int alloc_size;			/* total buffer size needed */
 	char *top_v, *curr_v;		/* virtual addrs into memory block */
 	dma_addr_t top_p, curr_p;	/* physical addrs into memory block */
-	u32 data, le32;			/* host data register value */
+	u32 data;			/* host data register value */
+	__le32 le32;
 	char *board_name = NULL;
 
 	DBG_printk("In dfx_driver_init...\n");
@@ -3104,7 +3106,6 @@ static void dfx_rcv_queue_process(
 					netif_rx(skb);
 
 					/* Update the rcv counters */
-					bp->dev->last_rx = jiffies;
 					bp->rcv_total_frames++;
 					if (*(p_buff + RCV_BUFF_K_DA) & 0x01)
 						bp->rcv_multicast_frames++;
@@ -3624,8 +3625,8 @@ static void __devexit dfx_unregister(struct device *bdev)
 }
 
 
-static int __devinit __unused dfx_dev_register(struct device *);
-static int __devexit __unused dfx_dev_unregister(struct device *);
+static int __devinit __maybe_unused dfx_dev_register(struct device *);
+static int __devexit __maybe_unused dfx_dev_unregister(struct device *);
 
 #ifdef CONFIG_PCI
 static int __devinit dfx_pci_register(struct pci_dev *,
@@ -3699,7 +3700,7 @@ static struct tc_driver dfx_tc_driver = {
 };
 #endif /* CONFIG_TC */
 
-static int __devinit __unused dfx_dev_register(struct device *dev)
+static int __devinit __maybe_unused dfx_dev_register(struct device *dev)
 {
 	int status;
 
@@ -3709,7 +3710,7 @@ static int __devinit __unused dfx_dev_register(struct device *dev)
 	return status;
 }
 
-static int __devexit __unused dfx_dev_unregister(struct device *dev)
+static int __devexit __maybe_unused dfx_dev_unregister(struct device *dev)
 {
 	put_device(dev);
 	dfx_unregister(dev);
@@ -3742,10 +3743,3 @@ MODULE_AUTHOR("Lawrence V. Stefani");
 MODULE_DESCRIPTION("DEC FDDIcontroller TC/EISA/PCI (DEFTA/DEFEA/DEFPA) driver "
 		   DRV_VERSION " " DRV_RELDATE);
 MODULE_LICENSE("GPL");
-
-
-/*
- * Local variables:
- * kernel-compile-command: "gcc -D__KERNEL__ -I/root/linux/include -Wall -Wstrict-prototypes -O2 -pipe -fomit-frame-pointer -fno-strength-reduce -m486 -malign-loops=2 -malign-jumps=2 -malign-functions=2 -c defxx.c"
- * End:
- */
