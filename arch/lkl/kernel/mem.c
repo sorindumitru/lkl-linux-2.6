@@ -308,7 +308,7 @@ void __init mem_init_0(void)
 	 * the bootmem bitmap so we then reserve it after freeing it :-)
 	 */
 	free_bootmem(phys_mem, phys_mem_size);
-	reserve_bootmem(phys_mem, bootmap_size);
+	reserve_bootmem(phys_mem, bootmap_size, BOOTMEM_DEFAULT);
 
 	/*
 	 * Get kmalloc into gear.
