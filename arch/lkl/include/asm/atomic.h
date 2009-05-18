@@ -137,18 +137,33 @@ static __inline__ int atomic_inc_not_zero(atomic_t *v)
         return atomic_add_unless(v, 1, 0);
 }
 
-#define xchg(ptr, v) \
-({ \
-        __typeof__(*(ptr)) ov; \
-        \
-        ov = *ptr; \
-        *ptr = v; \
-        ov; \
-})
+#define xchg(ptr, v)	       \
+  ({			       \
+    __typeof__(*(ptr)) ov;     \
+			       \
+    ov = *ptr;		       \
+    *ptr = v;		       \
+    ov;			       \
+  })
 
 
-#define atomic_xchg(v, new) (xchg(v, new))
+#define atomic_xchg(v, new) (xchg(&((v)->counter), (new)))
+#define atomic_cmpxchg(v, old, new) ((int)cmpxchg(&((v)->counter), (old), (new)))
 
+#include <asm-generic/cmpxchg-local.h>
+
+
+/*
+ * cmpxchg_local and cmpxchg64_local are atomic wrt current CPU. Always make
+ * them available.
+ */
+#define cmpxchg_local(ptr, o, n)					\
+  ((__typeof__(*(ptr)))__cmpxchg_local_generic((ptr), (unsigned long)(o), \
+					       (unsigned long)(n), sizeof(*(ptr))))
+#define cmpxchg64_local(ptr, o, n) __cmpxchg64_local_generic((ptr), (o), (n))
+
+/* this include will make us fail on SMP. */
+#include <asm-generic/cmpxchg.h>
 
 #include <asm-generic/atomic.h>
 
