@@ -1,25 +1,25 @@
 #ifndef _ASM_LKL_ATOMIC_H
 #define _ASM_LKL_ATOMIC_H
 
+#include <linux/types.h>
 #include <asm/system.h>
 
-typedef int atomic_t;
 
-#define ATOMIC_INIT(i) (i)
+#define ATOMIC_INIT(i) { (i) }
 
 static __inline__ int atomic_read(const atomic_t *v)
 {
-	return  *v;
+	return  v->counter;
 }
 
 static __inline__ void atomic_set(atomic_t *v, int i)
 {
-	*v=i;
+	v->counter = i;
 }
 
 static __inline__ void atomic_add(int i, atomic_t *v)
 {
-	*v+=i;
+	v->counter += i;
 }
 
 static __inline__ void atomic_inc(atomic_t *v)
@@ -41,8 +41,8 @@ static __inline__ int atomic_add_and_test(int i, atomic_t *v)
 {
 	int ret;
 	
-	*v+=i;
-	ret=(*v == 0);
+	v->counter += i;
+	ret = (v->counter == 0);
 	
 	return ret;
 }
@@ -66,8 +66,8 @@ static __inline__ int atomic_add_negative(int i, atomic_t *v)
 {
 	int ret;
 	
-	*v+=i;
-	ret=(*v < 0);
+	v->counter += i;
+	ret = (v->counter < 0);
 	
 	return ret;
 }
@@ -76,8 +76,8 @@ static __inline__ int atomic_add_return(int i, atomic_t *v)
 {
 	int ret;
 	
-	*v+=i;
-	ret=*v;
+	v->counter += i;
+	ret = v->counter;
 	
 	return ret;
 }
@@ -101,9 +101,9 @@ static inline int atomic_sub_if_positive(int i, atomic_t *v)
 {
 	int ret;
 	
-	ret=*v - i;
-	if (*v >= i)
-	    *v -= i;
+	ret = v->counter - i;
+	if (v->counter >= i)
+	    v->counter -= i;
 	return ret;
 }
 
@@ -125,10 +125,10 @@ static __inline__ int atomic_add_unless(atomic_t *v, int a, int u)
 {
 	int ret=1;
 	
-        if (*v != u) 
-                *v+=a;
+        if (v->counter != u)
+                v->counter += a;
         else
-                ret=0;
+                ret = 0;
 	return ret;
 }
 
@@ -141,8 +141,8 @@ static __inline__ int atomic_inc_not_zero(atomic_t *v)
 ({ \
         __typeof__(*(ptr)) ov; \
         \
-        ov=*ptr; \
-        *ptr=v; \
+        ov = *ptr; \
+        *ptr = v; \
         ov; \
 })
 
