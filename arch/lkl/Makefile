@@ -19,6 +19,7 @@ LDFLAGS_vmlinux := -r
 arch_dir = arch/lkl
 
 CFLAGS += -fno-builtin -g 
+LINUXINCLUDE += -I$(srctree)/arch
 
 KALLSYMS += --symbol-prefix=$(shell echo | $(CROSS_COMPILE)cpp -dM | grep USER_LABEL_PREFIX | cut -f3 -d ' ')
 
