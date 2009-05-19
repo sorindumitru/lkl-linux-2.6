@@ -196,7 +196,7 @@ void cpu_idle(void)
 			}
 			loop--;
 		}
-		tick_nohz_stop_sched_tick();		
+		tick_nohz_stop_sched_tick(1);
 		run_irqs();
 		if (need_resched() || !rcu_done) {
 			/* 
