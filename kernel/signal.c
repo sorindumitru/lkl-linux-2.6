@@ -896,7 +896,7 @@ static void print_fatal_signal(struct pt_regs *regs, int signr)
 	printk("%s/%d: potentially unexpected fatal signal %d.\n",
 		current->comm, task_pid_nr(current), signr);
 
-#if defined(__i386__) && !defined(__arch_um__)
+#if defined(__i386__) && !defined(__arch_um__) && !defined(__arch_lkl__)
 	printk("code at %08lx: ", regs->ip);
 	{
 		int i;
