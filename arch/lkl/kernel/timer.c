@@ -80,7 +80,6 @@ static struct clock_event_device clockevent = {
 	.shift		= 0,
         .mult           = 1,
 	.irq		= 0,
-        .cpumask        = CPU_MASK_CPU0,
         .max_delta_ns   = 0xffffffff,
         .min_delta_ns   = 0
 };
@@ -98,7 +97,7 @@ void __init time_init(void)
 {
 	BUG_ON(!lkl_nops->timer || !lkl_nops->time);
 
-
+	clockevent.cpumask = cpumask_of(0);
 	setup_irq(0, &irq0);
 
 	BUG_ON(clocksource_register(&clocksource) != 0);
