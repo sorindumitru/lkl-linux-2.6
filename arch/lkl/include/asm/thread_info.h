@@ -54,6 +54,7 @@ static inline struct thread_info *current_thread_info(void)
         return _current_thread_info;
 }
 
+#define __HAVE_ARCH_THREAD_INFO_ALLOCATOR
 /* thread information allocation */
 extern struct thread_info* alloc_thread_info(struct task_struct*);
 extern void free_thread_info(struct thread_info*);
