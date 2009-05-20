@@ -108,7 +108,10 @@ extern asmlinkage int kernel_thread(int (*fn)(void *), void * arg, unsigned long
 #define TIF_NEED_RESCHED	3	/* rescheduling necessary */
 #define TIF_SINGLESTEP		4	/* restore singlestep on return to user mode */
 #define TIF_IRET		5	/* return with iret */
-#define TIF_SYSCALL_EMU		6	/* syscall emulation active */
+
+/* TODO: LAG: see if this can be enabled in LKL (as it is present in x86 UML) */
+/* #define TIF_SYSCALL_EMU		6 */	/* syscall emulation active */
+
 #define TIF_SYSCALL_AUDIT	7	/* syscall auditing active */
 #define TIF_SECCOMP		8	/* secure computing */
 #define TIF_RESTORE_SIGMASK	9	/* restore signal mask in do_signal() */
