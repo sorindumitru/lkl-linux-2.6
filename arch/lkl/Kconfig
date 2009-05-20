@@ -101,6 +101,9 @@ config TICK_ONESHOT
 	bool
 	default y
 
+config HZ
+	int
+	default 100
 
 # Define the architecture
 config LKL
