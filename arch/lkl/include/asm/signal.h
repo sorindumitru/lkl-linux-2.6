@@ -1,6 +1,7 @@
 #ifndef _ASM_LKL_SIGNAL_H
 #define _ASM_LKL_SIGNAL_H
 
+struct task_struct;
 #include <asm-generic/signal.h>
 
 #define _NSIG_WORDS 1
