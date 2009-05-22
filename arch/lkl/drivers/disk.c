@@ -36,7 +36,7 @@ static irqreturn_t lkl_disk_irq(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static void lkl_disk_request(request_queue_t *q)
+static void lkl_disk_request(struct request_queue *q)
 {
 	struct request *req;
 
