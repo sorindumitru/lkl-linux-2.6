@@ -16,7 +16,7 @@ void lkl_disk_do_rw(void *data, unsigned long sector, unsigned long nsect,
 	cs->sync=1;
 
 	if (fseek(f, sector*512, SEEK_SET) != 0) {
-		cs->status=LKL_DISK_CS_ERROR;
+		cs->error=LKL_DISK_CS_ERROR;
 		return;
 	}
 
@@ -26,9 +26,9 @@ void lkl_disk_do_rw(void *data, unsigned long sector, unsigned long nsect,
                 err=fread(buffer, 512, nsect, f);
 
 	if (err != nsect) 
-		cs->status=LKL_DISK_CS_ERROR;
+		cs->error=LKL_DISK_CS_ERROR;
 	else
-		cs->status=LKL_DISK_CS_SUCCESS;
+		cs->error=LKL_DISK_CS_SUCCESS;
 
 	return;
 }

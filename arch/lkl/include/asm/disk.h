@@ -4,13 +4,14 @@
 #ifndef __KERNEL__
 #include <asm/lkl.h>
 #endif
+#include <linux/errno.h>
 
-#define LKL_DISK_CS_ERROR 0
-#define LKL_DISK_CS_SUCCESS 1
+#define LKL_DISK_CS_ERROR   -EIO
+#define LKL_DISK_CS_SUCCESS 0
 
 struct lkl_disk_cs {
 	void *linux_cookie;
-	int status, sync;
+	int error, sync;
 };
 void lkl_disk_do_rw(void *f, unsigned long sector, unsigned long nsect,
 		    char *buffer, int dir, struct lkl_disk_cs *cs);

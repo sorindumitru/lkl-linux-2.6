@@ -22,8 +22,7 @@ static void complete_request(struct lkl_disk_cs *cs)
 {
 	struct request *req=(struct request*)cs->linux_cookie;
 
-	end_that_request_first(req, cs->status, req->current_nr_sectors);
-	end_that_request_last(req, cs->status);
+	__blk_end_request(req, cs->error, req->current_nr_sectors << 9);
 
 	kfree(cs);
 }
@@ -47,7 +46,7 @@ static void lkl_disk_request(request_queue_t *q)
 
 		if (! blk_fs_request(req)) {
 			printk (KERN_NOTICE "Skip non-fs request\n");
-			end_request(req, 0);
+			__blk_end_request(req, -EIO, req->hard_cur_sectors << 9);
 			continue;
 		}
 
@@ -58,7 +57,7 @@ static void lkl_disk_request(request_queue_t *q)
 		 * Async is broken.
 		 */
 		BUG_ON (cs.sync == 0);
-		end_request(req, cs.status);
+		blk_end_request(req, cs.error, blk_rq_bytes(req));
 	}
 }
 

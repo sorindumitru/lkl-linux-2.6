@@ -12,9 +12,9 @@ NTSTATUS lkl_disk_completion(DEVICE_OBJECT *dev, IRP *irp, void *arg)
 	DbgPrint("%s:%d: %d\n", __FUNCTION__, __LINE__, isb->Status);
 
 	if (isb->Status == STATUS_SUCCESS)
-		cs->status=LKL_DISK_CS_SUCCESS;
+		cs->error=LKL_DISK_CS_SUCCESS;
 	else
-		cs->status=LKL_DISK_CS_ERROR;
+		cs->error=LKL_DISK_CS_ERROR;
 	linux_trigger_irq_with_data(LKL_DISK_IRQ, cs);
 
 	ExFreePool(isb);
@@ -59,7 +59,7 @@ void lkl_disk_do_rw(void *_dev, unsigned long sector, unsigned long nsect,
 	DbgPrint("%s:%d: dir=%d buffer=%p offset=%u nsect=%u\n", __FUNCTION__, __LINE__, dir, buffer, sector, nsect);
 
 	if (!(isb=ExAllocatePool(NonPagedPool, sizeof(*isb)))) {
-		cs->status=LKL_DISK_CS_ERROR;
+		cs->error=LKL_DISK_CS_ERROR;
 		linux_trigger_irq_with_data(LKL_DISK_IRQ, cs);
 		return;
 	}
@@ -69,7 +69,7 @@ void lkl_disk_do_rw(void *_dev, unsigned long sector, unsigned long nsect,
 					  isb);
 	if (!irp) {
 		ExFreePool(isb);
-		cs->status=LKL_DISK_CS_ERROR;
+		cs->error=LKL_DISK_CS_ERROR;
 		linux_trigger_irq_with_data(LKL_DISK_IRQ, cs);
 		return;
 	}
@@ -101,7 +101,7 @@ void lkl_disk_do_rw(void *_dev, unsigned long sector, unsigned long nsect,
 	cs->sync=1;
 
 	if (!irp) {
-		cs->status=LKL_DISK_CS_ERROR;
+		cs->error=LKL_DISK_CS_ERROR;
 		return;
 	}
 
@@ -113,9 +113,9 @@ void lkl_disk_do_rw(void *_dev, unsigned long sector, unsigned long nsect,
 	KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
 	
 	if (isb.Status == STATUS_SUCCESS)
-		cs->status=LKL_DISK_CS_SUCCESS;
+		cs->error=LKL_DISK_CS_SUCCESS;
 	else 
-		cs->status=LKL_DISK_CS_ERROR;
+		cs->error=LKL_DISK_CS_ERROR;
 }
 #endif
 

@@ -12,7 +12,7 @@ void lkl_disk_do_rw(void *_file, unsigned long sector, unsigned long nsect,
 	cs->sync=1;
 
 	if (apr_file_seek(file, APR_SET, &offset) != APR_SUCCESS) {
-		cs->status=LKL_DISK_CS_ERROR;
+		cs->error=LKL_DISK_CS_ERROR;
 		return;
 	}
 
@@ -22,9 +22,9 @@ void lkl_disk_do_rw(void *_file, unsigned long sector, unsigned long nsect,
 		status=apr_file_read_full(file, buffer, len, NULL);
 
 	if (status == APR_SUCCESS)
-		cs->status=LKL_DISK_CS_SUCCESS;
+		cs->error=LKL_DISK_CS_SUCCESS;
 	else
-		cs->status=LKL_DISK_CS_ERROR;
+		cs->error=LKL_DISK_CS_ERROR;
 	
 }
 
