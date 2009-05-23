@@ -130,7 +130,7 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 
 extern void *halt_sem;
 
-int lkl_start_kernel(struct lkl_native_operations *nops, const char *fmt, ...)
+int __init lkl_start_kernel(struct lkl_native_operations *nops, const char *fmt, ...)
 {
 	va_list ap;
 
