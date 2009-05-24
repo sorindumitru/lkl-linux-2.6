@@ -1,5 +1,5 @@
 #include <apr_file_io.h>
-#include <asm-lkl/disk.h>
+#include <asm/disk.h>
 
 void lkl_disk_do_rw(void *_file, unsigned long sector, unsigned long nsect,
 		   char *buffer, int dir, struct lkl_disk_cs *cs)

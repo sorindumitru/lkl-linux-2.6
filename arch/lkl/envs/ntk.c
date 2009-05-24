@@ -1,5 +1,5 @@
 #include <ddk/ntddk.h>
-#include <asm-lkl/callbacks.h>
+#include <asm/callbacks.h>
 
 static void* sem_alloc(int count)
 {

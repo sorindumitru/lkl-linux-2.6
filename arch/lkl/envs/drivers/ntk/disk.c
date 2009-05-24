@@ -1,6 +1,6 @@
 #include <ddk/ntddk.h>
 #include <asm/callbacks.h>
-#include <asm-lkl/disk.h>
+#include <asm/disk.h>
 
 #ifdef ASYNC
 NTSTATUS lkl_disk_completion(DEVICE_OBJECT *dev, IRP *irp, void *arg)

@@ -11,9 +11,9 @@
 #include <poll.h>
 #include <net/if.h>
 
-#include <asm-lkl/env.h>
-#include <asm-lkl/eth.h>
-#include <asm-lkl/callbacks.h>
+#include <asm/env.h>
+#include <asm/eth.h>
+#include <asm/callbacks.h>
 
 struct handle {
 	pthread_t thread;

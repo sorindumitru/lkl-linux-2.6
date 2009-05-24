@@ -2,8 +2,8 @@
 #include <assert.h>
 #include <unistd.h>
 
-#include <asm-lkl/callbacks.h>
-#include <asm-lkl/env.h>
+#include <asm/callbacks.h>
+#include <asm/env.h>
 
 static void* sem_alloc(int count)
 {

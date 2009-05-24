@@ -11,8 +11,8 @@
 #include <malloc.h>
 #include <assert.h>
 
-#include <asm-lkl/callbacks.h>
-#include <asm-lkl/env.h>
+#include <asm/callbacks.h>
+#include <asm/env.h>
 
 static apr_pool_t *pool;
 

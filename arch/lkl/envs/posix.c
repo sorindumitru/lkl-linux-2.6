@@ -10,7 +10,7 @@
 #include <string.h>
 #include <poll.h>
 
-#include <asm-lkl/callbacks.h>
+#include <asm/callbacks.h>
 
 
 
