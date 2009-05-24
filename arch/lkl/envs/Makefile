@@ -1,8 +1,8 @@
-CFLAGS=-Wall $(LINUXINCLUDE) $(EXTRA_CFLAGS) $(LKLENV_CFLAGS)
+LOCAL_CFLAGS = $(CFLAGS) $(LINUXINCLUDE) $(LKLENV_CFLAGS) $(def_arch)
 
 $(obj)/%.o: $(srctree)/$(src)/%.c
 	mkdir -p `dirname $@`
-	$(CROSS_COMPILE)gcc $(CFLAGS) -c -o $@ $^ 
+	$(CROSS_COMPILE)gcc $(LOCAL_CFLAGS) -c -o $@ $^
 
 _ENV=$(if $(CONFIG_LKL_ENV_POSIX),posix)
 _ENV+=$(if $(CONFIG_LKL_ENV_NT),nt)
