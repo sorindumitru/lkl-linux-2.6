@@ -70,6 +70,11 @@ SECTIONS
 	
 		*(__vermagic)
 	
+		/* Built-in firmware blobs */
+		VMLINUX_SYMBOL(__start_builtin_fw) = .;
+		*(.builtin_fw)
+		VMLINUX_SYMBOL(__end_builtin_fw) = .;
+
 		/* Kernel symbol table: Normal symbols */
 		VMLINUX_SYMBOL(__start___ksymtab) = .;
 		*(__ksymtab)
