@@ -63,6 +63,9 @@ SECTIONS
 	  	VMLINUX_SYMBOL(__stop___ex_table) = .;
 	}
 	
+	. = ALIGN(4096);
+	__init_begin = .;
+
 	RODATA_SECTION : {
 		VMLINUX_SYMBOL(__start_rodata) = .;
 
@@ -171,7 +174,8 @@ SECTIONS
         VMLINUX_SYMBOL(_eextratext) = .;	
 
         . = ALIGN(4096);
-	
+	__init_end = .;
+
         .bss : {
                 VMLINUX_SYMBOL(__start_bss) = .;
 		*(.sbss) *(.scommon)
