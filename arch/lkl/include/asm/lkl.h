@@ -112,8 +112,15 @@ int snprintf(char * buf, __kernel_size_t size, const char * fmt,
 	     ...) __attribute__ ((format (printf, 3, 4)));
 int sscanf(const char *, const char *,
 	   ...) __attribute__ ((format (scanf, 2, 3)));
+
+
+#ifndef strchr
 extern char * strchr(const char *,int);
+#endif /* strchr */
+
+#ifndef strlen
 extern __kernel_size_t strlen(const char *);
+#endif /* strlen */
 
 /*
  * All subsequent system calls from the current native thread will be executed
