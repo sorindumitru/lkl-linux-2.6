@@ -1,4 +1,4 @@
-LOCAL_CFLAGS = $(CFLAGS) $(LINUXINCLUDE) $(LKLENV_CFLAGS) $(def_arch)
+LOCAL_CFLAGS = $(EXTRA_CFLAGS) $(CFLAGS) $(LINUXINCLUDE) $(LKLENV_CFLAGS) $(def_arch)
 
 $(obj)/%.o: $(srctree)/$(src)/%.c
 	mkdir -p `dirname $@`

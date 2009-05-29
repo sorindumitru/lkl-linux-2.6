@@ -786,6 +786,17 @@ int on_each_cpu(void (*func) (void *info), void *info, int wait)
 EXPORT_SYMBOL(on_each_cpu);
 #endif
 
+
+
+/*
+ * mingw does not handle __weak well.
+ * early_irq_init() is defined in kernel/irq/handle.c which
+ * is compiled if CONFIG_GENERIC_HARDIRQS is defined.
+ * If CONFIG_GENERIC_HARDIRQS is defined do not provide this
+ * default implementation.
+ */
+#ifndef CONFIG_GENERIC_HARDIRQS
+
 /*
  * [ These __weak aliases are kept in a separate compilation unit, so that
  *   GCC does not inline them incorrectly. ]
@@ -795,6 +806,8 @@ int __init __weak early_irq_init(void)
 {
 	return 0;
 }
+
+#endif /* CONFIG_GENERIC_HARDIRQS */
 
 int __init __weak arch_early_irq_init(void)
 {
