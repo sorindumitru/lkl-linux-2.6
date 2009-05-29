@@ -276,7 +276,7 @@ int timekeeping_valid_for_hres(void)
  *
  *  XXX - Do be sure to remove it once all arches implement it.
  */
-unsigned long __attribute__((weak)) read_persistent_clock(void)
+unsigned long __weak read_persistent_clock(void)
 {
 	return 0;
 }
