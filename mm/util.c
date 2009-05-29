@@ -192,7 +192,7 @@ void arch_pick_mmap_layout(struct mm_struct *mm)
 }
 #endif
 
-int __attribute__((weak)) get_user_pages_fast(unsigned long start,
+int __weak get_user_pages_fast(unsigned long start,
 				int nr_pages, int write, struct page **pages)
 {
 	struct mm_struct *mm = current->mm;
