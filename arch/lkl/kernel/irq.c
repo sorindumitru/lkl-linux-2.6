@@ -226,6 +226,7 @@ void init_IRQ(void)
 	for(i=0; i<NR_IRQS; i++) {
 		BUG_ON((irqs[i].lock=lkl_nops->sem_alloc(1)) == NULL);
 		INIT_LIST_HEAD(&irqs[i].data_list);
+		irqs[i].no_data_count=0;
 		set_irq_chip_and_handler(i, &dummy_irq_chip, handle_simple_irq);
 	}
 
