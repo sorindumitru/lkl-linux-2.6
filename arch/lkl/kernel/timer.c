@@ -98,7 +98,7 @@ void __init time_init(void)
 	BUG_ON(!lkl_nops->timer || !lkl_nops->time);
 
 	clockevent.cpumask = cpumask_of(0);
-	setup_irq(0, &irq0);
+	setup_irq(TIMER_IRQ, &irq0);
 
 	BUG_ON(clocksource_register(&clocksource) != 0);
         
