@@ -15,7 +15,7 @@ NTSTATUS lkl_disk_completion(DEVICE_OBJECT *dev, IRP *irp, void *arg)
 		cs->error=LKL_DISK_CS_SUCCESS;
 	else
 		cs->error=LKL_DISK_CS_ERROR;
-	linux_trigger_irq_with_data(LKL_DISK_IRQ, cs);
+	lkl_trigger_irq_with_data(LKL_DISK_IRQ, cs);
 
 	ExFreePool(isb);
 
@@ -60,7 +60,7 @@ void lkl_disk_do_rw(void *_dev, unsigned long sector, unsigned long nsect,
 
 	if (!(isb=ExAllocatePool(NonPagedPool, sizeof(*isb)))) {
 		cs->error=LKL_DISK_CS_ERROR;
-		linux_trigger_irq_with_data(LKL_DISK_IRQ, cs);
+		lkl_trigger_irq_with_data(LKL_DISK_IRQ, cs);
 		return;
 	}
 		
@@ -70,7 +70,7 @@ void lkl_disk_do_rw(void *_dev, unsigned long sector, unsigned long nsect,
 	if (!irp) {
 		ExFreePool(isb);
 		cs->error=LKL_DISK_CS_ERROR;
-		linux_trigger_irq_with_data(LKL_DISK_IRQ, cs);
+		lkl_trigger_irq_with_data(LKL_DISK_IRQ, cs);
 		return;
 	}
 
