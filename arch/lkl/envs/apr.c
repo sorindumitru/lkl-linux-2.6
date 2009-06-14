@@ -167,7 +167,7 @@ static void* APR_THREAD_FUNC timer_thread(apr_thread_t *thr, void *arg)
 		timeout_us=-1;
 		
 		if (status != APR_SUCCESS) {
-			if (!APR_STATUS_IS_TIMEUP(status)) {
+			if (!APR_STATUS_IS_TIMEUP(status) && APR_EINTR != status) {
 				char buffer[128];
 				printf("lkl: timer error: %s!\n", 
 				       apr_strerror(status, buffer, sizeof(buffer)));
