@@ -2,6 +2,7 @@
 #include <linux/kallsyms.h>
 #include <linux/module.h>
 #include <asm/ptrace.h>
+#include <asm/callbacks.h>
 
 
 /* these are stolen from arch/um/sysrq.c */
@@ -33,6 +34,8 @@ void dump_stack(void)
 	unsigned long stack;
 
 	show_trace(current, &stack);
+	if (lkl_nops->dump_stack)
+		lkl_nops->dump_stack();
 }
 EXPORT_SYMBOL(dump_stack);
 

@@ -10,6 +10,11 @@ struct lkl_native_operations {
 	void (*print)(const char *str, int len);
 
 	/*
+	 * Called to print non-LKL stack dumps [optional]
+	 */
+	void (*dump_stack)(void);
+
+	/*
 	 * Called during a kernel panic. 	 
 	 */
 	long (*panic_blink)(long time);
