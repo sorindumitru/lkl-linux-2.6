@@ -56,6 +56,7 @@ void threads_cleanup(void)
 		schedule_timeout(1);
 
 	lkl_nops->sem_free(ti->sched_sem);
+	lkl_nops->sem_free(threads_counter_lock);
 }
 
 struct thread_info* alloc_thread_info(struct task_struct *task)
