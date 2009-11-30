@@ -195,6 +195,11 @@ static void dump_stack(void)
 	backtrace_symbols_fd(frame_pointers, size, STDOUT_FILENO);
 }
 
+static void halt(void)
+{
+	printf("lkl: halt user callback called\n");
+}
+
 static struct lkl_native_operations nops = {
 	.panic_blink = panic_blink,
 	.thread_create = thread_create,
@@ -211,6 +216,7 @@ static struct lkl_native_operations nops = {
 	.mem_alloc = malloc,
 	.mem_free = free,
 	.dump_stack = dump_stack,
+	.halt = halt,
 };
 
 
