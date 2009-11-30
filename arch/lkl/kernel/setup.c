@@ -131,6 +131,8 @@ int kernel_execve(const char *filename, char *const argv[], char *const envp[])
 extern void *halt_sem;
 
 extern void free_IRQ(void);
+extern void free_syscall(void);
+
 int __init lkl_start_kernel(struct lkl_native_operations *nops, const char *fmt, ...)
 {
 	va_list ap;
@@ -153,6 +155,7 @@ int __init lkl_start_kernel(struct lkl_native_operations *nops, const char *fmt,
 	lkl_nops->timer(0);
 
 
+	free_syscall();
 	free_IRQ();
 	/*
 	 * We are almost dead, announce application.

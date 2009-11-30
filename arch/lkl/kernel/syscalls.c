@@ -611,3 +611,8 @@ int __init syscall_init(void)
 }
 
 late_initcall(syscall_init);
+
+void free_syscall(void)
+{
+	lkl_nops->sem_free(syscall_queue_hash_lock);
+}
