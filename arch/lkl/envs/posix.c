@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <string.h>
 #include <poll.h>
+#include <execinfo.h>
 
 #include <asm/callbacks.h>
 
@@ -174,6 +175,25 @@ static int init(void)
 	return 0;
 }
 
+static void dump_stack(void)
+{
+#define DUMP_STACK_MAX_FRAMES 20
+	void *frame_pointers[DUMP_STACK_MAX_FRAMES];
+	size_t size;
+	size_t i;
+
+	/* This breaks the claim to be POSIX only in this file.
+	 * backtrace() & co. are GNU extensions, but it's not clear
+	 * how to do feature detection on it so it can be compiled out
+	 * when not available.
+	 *
+	 * Use the -rdynamic linker option to get usable symbols.  The
+	 * lkl Makefile strips symbols that do not start with _lkl or
+	 * lkl with objdump. Skip that phase to get kernel symbols in dumps.
+	 */
+	size = backtrace(frame_pointers, DUMP_STACK_MAX_FRAMES);
+	backtrace_symbols_fd(frame_pointers, size, STDOUT_FILENO);
+}
 
 static struct lkl_native_operations nops = {
 	.panic_blink = panic_blink,
@@ -189,7 +209,8 @@ static struct lkl_native_operations nops = {
 	.init = init,
 	.print = print,
 	.mem_alloc = malloc,
-	.mem_free = free
+	.mem_free = free,
+	.dump_stack = dump_stack,
 };
 
 
