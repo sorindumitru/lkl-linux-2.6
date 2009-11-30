@@ -233,6 +233,16 @@ void init_IRQ(void)
 	printk(KERN_INFO "lkl: IRQs initialized\n");
 }
 
+void free_IRQ(void)
+{
+	int i;
+
+	for(i=0; i<NR_IRQS; i++)
+		lkl_nops->sem_free(irqs[i].lock);
+	lkl_nops->sem_free(sem);
+
+	printk(KERN_INFO "lkl: IRQs freed\n");
+}
 
 int show_interrupts(struct seq_file *p, void *v)
 {
