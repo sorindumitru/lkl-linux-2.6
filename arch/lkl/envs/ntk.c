@@ -3,7 +3,7 @@
 
 static void* sem_alloc(int count)
 {
-	KSEMAPHORE *sem=ExAllocatePool(PagedPool, sizeof(*sem));
+	KSEMAPHORE *sem=ExAllocatePool(NonPagedPool, sizeof(*sem));
 
 	if (!sem)
 		return NULL;
