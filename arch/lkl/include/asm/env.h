@@ -4,6 +4,7 @@
 #include <asm/lkl.h>
 
 int lkl_env_init(unsigned long mem_size);
+int lkl_env_fini();
 
 long lkl_mount(char *dev, char *mnt, int flags, void *data);
 long lkl_mount_dev(__kernel_dev_t dev, char *fs_type, int flags, void *data,

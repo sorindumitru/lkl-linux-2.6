@@ -1,5 +1,6 @@
 #include <ddk/ntddk.h>
 #include <asm/callbacks.h>
+#include <asm/lkl.h>
 
 static void* sem_alloc(int count)
 {
@@ -52,12 +53,13 @@ static unsigned long long time(void)
 	LARGE_INTEGER li;
 
 	KeQuerySystemTime(&li);
-	
+
         return li.QuadPart*100;
 }
 
 static KTIMER timer;
-static int timer_done;
+static KSEMAPHORE timer_killer_sem;
+static volatile int timer_done;
 
 static void set_timer(unsigned long delta)
 {
@@ -65,22 +67,47 @@ static void set_timer(unsigned long delta)
 		return;
 
 	if (delta == LKL_TIMER_SHUTDOWN) {
-		timer_done=1;
-		delta=0;
+		/* deque the timer so it won't be put in signaled state */
+		KeCancelTimer(&timer);
+		/* timers run on DPCs. This returns after all active
+		 * DPCs have executed, which means the timer is
+		 * certainly not running nor being schduled after this
+		 * point. */
+		KeFlushQueuedDpcs();
+
+
+		/* signal the timer interrupt we're done */
+		timer_done = 1;
+		/* the memory barrier is needed because it may be
+		 * possible for the compiler/cpu to call
+		 * KeReleaseSemaphore before assigning
+		 * timer_done. That would make the timer_thread wake
+		 * from the wait-for-multiple-objs without noticing
+		 * out signalling */
+		KeMemoryBarrier();
+		KeReleaseSemaphore(&timer_killer_sem, 0, 1, 0);
+		return;
 	}
 
 	KeSetTimer(&timer, RtlConvertLongToLargeInteger((unsigned long)(-(delta/100))), NULL);
 }
 
 
+
+#define WaitAll 0
+#define WaitAny 1
+
+static void *timer_wait_objs[] = {&timer, &timer_killer_sem};
 static void DDKAPI timer_thread(LPVOID arg)
 {
 	while (1) {
-		KeWaitForSingleObject(&timer, Executive, KernelMode, FALSE, NULL);
+		KeWaitForMultipleObjects(2, timer_wait_objs, WaitAny, Executive, KernelMode, FALSE, NULL, NULL);
 		if (timer_done)
-			return;
+			break;
 		lkl_trigger_irq(TIMER_IRQ);
 	}
+
+	PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
 static long panic_blink(long time)
@@ -134,23 +161,87 @@ static struct lkl_native_operations nops = {
 static void DDKAPI init_thread(LPVOID arg)
 {
 	lkl_start_kernel(&nops, "");
+	PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
-/* FIXME: check for errors */
+PVOID init_thread_obj;
+PVOID timer_thread_obj;
+
 int lkl_env_init(unsigned long mem_size)
 {
-	HANDLE a, b;
+	HANDLE init_thread_handle, timer_thread_handle;
+	NTSTATUS status;
+
 	nops.phys_mem_size=mem_size;
 
 	KeInitializeTimer(&timer);
-        KeInitializeSemaphore(&init_sem, 0, 100);	
+        KeInitializeSemaphore(&init_sem, 0, 100);
+        KeInitializeSemaphore(&timer_killer_sem, 0, 100);
 
-	PsCreateSystemThread(&a, THREAD_ALL_ACCESS, NULL, NULL, NULL,
-				 timer_thread, NULL);
-	PsCreateSystemThread(&b, THREAD_ALL_ACCESS, NULL, NULL, NULL,
-				 init_thread, NULL);
-        KeWaitForSingleObject(&init_sem, Executive, KernelMode, FALSE, NULL);
+	/* create the initial thread */
+	status = PsCreateSystemThread(&init_thread_handle, THREAD_ALL_ACCESS,
+				      NULL, NULL, NULL, init_thread, NULL);
+	if (status != STATUS_SUCCESS)
+		goto err;
 
-	return 0;
+
+	/* wait for the initial thread to complete initialization to
+	 * be able to interact with it */
+        status = KeWaitForSingleObject(&init_sem, Executive, KernelMode, FALSE, NULL);
+	if (status != STATUS_SUCCESS)
+		goto close_init_thread;
+
+	/* create the timer thread responsible with delivering timer interrupts */
+	status = PsCreateSystemThread(&timer_thread_handle, THREAD_ALL_ACCESS,
+				      NULL, NULL, NULL, timer_thread, NULL);
+	if (status != STATUS_SUCCESS)
+		goto close_init_thread;
+
+
+	/* get references to the init and timer threads to be able to wait on them */
+	status = ObReferenceObjectByHandle(init_thread_handle, THREAD_ALL_ACCESS,
+					   NULL, KernelMode, &init_thread_obj, NULL);
+	if (!NT_SUCCESS(status))
+		goto close_timer_thread;
+
+	status = ObReferenceObjectByHandle(timer_thread_handle, THREAD_ALL_ACCESS,
+					   NULL, KernelMode, &timer_thread_obj, NULL);
+	if (!NT_SUCCESS(status))
+		goto deref_init_thread_obj;
+
+	/* we don't need the handles, we have access to the objects */
+	ZwClose(timer_thread_handle);
+	ZwClose(init_thread_handle);
+	return STATUS_SUCCESS;
+
+
+deref_init_thread_obj:
+	ObDereferenceObject(init_thread_obj);
+close_timer_thread:
+	ZwClose(timer_thread_handle);
+close_init_thread:
+	ZwClose(init_thread_handle);
+err:
+	return status;
 }
 
+void lkl_wait_init(void)
+{
+	KeWaitForSingleObject(init_thread_obj, Executive, KernelMode, FALSE, NULL);
+	ObDereferenceObject(init_thread_obj);
+}
+
+void lkl_wait_timer(void)
+{
+	KeWaitForSingleObject(timer_thread_obj, Executive, KernelMode, FALSE, NULL);
+	ObDereferenceObject(timer_thread_obj);
+}
+
+
+int lkl_env_fini(void)
+{
+	lkl_sys_halt();
+	lkl_wait_init();
+	lkl_wait_timer();
+	return 0;
+}
