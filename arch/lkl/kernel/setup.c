@@ -152,7 +152,7 @@ int __init lkl_start_kernel(struct lkl_native_operations *nops, const char *fmt,
 	/*
 	 * Stop the timer.
 	 */
-	lkl_nops->timer(0);
+	lkl_nops->timer(LKL_TIMER_SHUTDOWN);
 
 
 	free_syscall();
