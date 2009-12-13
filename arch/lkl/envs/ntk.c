@@ -4,7 +4,7 @@
 
 static void* sem_alloc(int count)
 {
-	KSEMAPHORE *sem=ExAllocatePool(NonPagedPool, sizeof(*sem));
+	KSEMAPHORE *sem=ExAllocatePoolWithTag(NonPagedPool, sizeof(*sem), 'LKLS');
 
 	if (!sem)
 		return NULL;
@@ -26,7 +26,7 @@ static void sem_down(void *sem)
 
 static void sem_free(void *sem)
 {
-	ExFreePool(sem);
+	ExFreePoolWithTag(sem, 'LKLS');
 }
 
 static void* thread_create(void (*fn)(void*), void *arg)
@@ -120,12 +120,12 @@ static long panic_blink(long time)
 
 static void* mem_alloc(unsigned int size)
 {
-	return ExAllocatePool(NonPagedPool, size);
+	return ExAllocatePoolWithTag(NonPagedPool, size, 'LKLP');
 }
 
 static void mem_free(void *data)
 {
-	ExFreePool(data);
+	ExFreePoolWithTag(data, 'LKLP');
 }
 
 static void print(const char *str, int len)
