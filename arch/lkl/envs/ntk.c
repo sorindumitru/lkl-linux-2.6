@@ -174,7 +174,7 @@ int lkl_env_init(unsigned long mem_size)
 
 	nops.phys_mem_size=mem_size;
 
-	KeInitializeTimer(&timer);
+	KeInitializeTimerEx(&timer, SynchronizationTimer);
         KeInitializeSemaphore(&init_sem, 0, 100);
         KeInitializeSemaphore(&timer_killer_sem, 0, 100);
 
