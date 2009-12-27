@@ -67,6 +67,13 @@ static void set_timer(unsigned long delta)
 		return;
 
 	if (delta == LKL_TIMER_SHUTDOWN) {
+		/* should not deliver timer shutdown twice */
+		if(timer_done) {
+			DbgPrint("*** LKL_TIMER_SHUTDOWN called when timer_done ***");
+			while(1)
+				;
+		}
+
 		/* deque the timer so it won't be put in signaled state */
 		KeCancelTimer(&timer);
 		/* timers run on DPCs. This returns after all active
