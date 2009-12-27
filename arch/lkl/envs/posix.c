@@ -242,3 +242,11 @@ int lkl_env_init(unsigned long mem_size)
 	return 0;
 }
 
+int lkl_env_fini()
+{
+	lkl_sys_halt();
+        pthread_join(&timer_thread, NULL);
+        pthread_join(&init_thread,  NULL);
+	return 0;
+}
+
