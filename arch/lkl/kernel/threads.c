@@ -127,6 +127,7 @@ static void thread_bootstrap(void *_tba)
 	schedule_tail(_last);
 
 	f(arg);
+	do_exit(0);
 }
 
 int copy_thread(int nr, unsigned long clone_flags, unsigned long esp,
