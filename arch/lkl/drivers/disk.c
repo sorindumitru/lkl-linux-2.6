@@ -61,10 +61,8 @@ static void lkl_disk_request(struct request_queue *q)
 	}
 }
 
-static int lkl_disk_open(struct inode *inode, fmode_t mode)
+static int lkl_disk_open(struct block_device *bdev, fmode_t mode)
 {
-	struct lkl_disk_dev *dev = inode->i_bdev->bd_disk->private_data;
-
 	return 0;
 }
 
