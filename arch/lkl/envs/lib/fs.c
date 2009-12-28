@@ -52,7 +52,16 @@ out:
 	return err;
 }
 
-long lkl_mount_dev(__kernel_dev_t dev, char *fs_type, int flags,
+
+/*
+ * Mount a linux block device described by the given devt
+ * - create a device file for this devt
+ * - create a mount point
+ * - mount the device over the mount point
+ *
+ * The mount path will be returned in mnt_path.
+ */
+long lkl_mount_dev(__kernel_dev_t devt, char *fs_type, int flags,
 		   void *data, char *mnt_str, int mnt_str_len)
 {
 	char dev_str[] = { "/dev/xxxxxxxxxxxxxxxx" };
@@ -61,10 +70,10 @@ long lkl_mount_dev(__kernel_dev_t dev, char *fs_type, int flags,
 	if (mnt_str_len < sizeof("/mnt/xxxxxxxxxxxxxxxx"))
 		return -ENOMEM;
 
-	snprintf(dev_str, sizeof(dev_str), "/dev/%016x", dev);
-	snprintf(mnt_str, mnt_str_len, "/mnt/%016x", dev);
+	snprintf(dev_str, sizeof(dev_str), "/dev/%016x", devt);
+	snprintf(mnt_str, mnt_str_len, "/mnt/%016x", devt);
 
-	err=lkl_sys_mknod(dev_str, S_IFBLK|0600, dev);
+	err=lkl_sys_mknod(dev_str, S_IFBLK|0600, devt);
 	if (err < 0)
 		return err;
 
