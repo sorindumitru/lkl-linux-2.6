@@ -77,14 +77,27 @@ static struct block_device_operations lkl_disk_ops = {
 
 static int major, failed_init, disks;
 
-int _lkl_disk_del_disk(__kernel_dev_t dev)
+int _lkl_disk_del_disk(__kernel_dev_t devt)
 {
-	struct block_device *bdev=bdget(dev);
-	if (!bdev || bdev->bd_disk->major != major)
+	struct block_device *bdev;
+	struct gendisk *gd;
+	int ret = 0, partno;
+
+	bdev = bdget(devt);
+	if (!bdev)
 		return -EINVAL;
-        del_gendisk(bdev->bd_disk);
+
+	gd = get_gendisk(new_decode_dev(devt), &partno);
+	if (!gd || gd->major != major) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	del_gendisk(gd);
+
+out:
 	bdput(bdev);
-	return 0;
+	return ret;
 }
 
 __kernel_dev_t _lkl_disk_add_disk(void *data, int sectors)
