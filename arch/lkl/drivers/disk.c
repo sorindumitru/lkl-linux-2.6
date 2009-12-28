@@ -96,10 +96,8 @@ __kernel_dev_t _lkl_disk_add_disk(void *data, int sectors)
 	if (failed_init)
 		return 0;
 
-        if (!(dev=kmalloc(sizeof(*dev), GFP_KERNEL)))
+        if (!(dev=kzalloc(sizeof(*dev), GFP_KERNEL)))
 		return 0;
-
-	memset (dev, 0, sizeof(*dev));
 
         dev->data=data;
 
