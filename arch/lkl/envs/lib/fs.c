@@ -68,8 +68,10 @@ long lkl_mount_dev(__kernel_dev_t dev, char *fs_type, int flags,
 	if (err < 0)
 		return err;
 
-	if (lkl_sys_access("/mnt", 0700) < 0) {
-		err=lkl_sys_mkdir("/mnt", 0700);
+	err = lkl_sys_access("/mnt", S_IRWXO);
+	if (err < 0) {
+		if (err == -ENOENT)
+			err = lkl_sys_mkdir("/mnt", 0700);
 		if (err < 0) 
 			return err;
 	}
