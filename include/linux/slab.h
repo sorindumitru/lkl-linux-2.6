@@ -153,6 +153,8 @@ size_t ksize(const void *);
 #include <linux/slub_def.h>
 #elif defined(CONFIG_SLOB)
 #include <linux/slob_def.h>
+#elif defined(CONFIG_LKL_SLAB)
+#include <asm/lkl_slab_def.h>
 #else
 #include <linux/slab_def.h>
 #endif

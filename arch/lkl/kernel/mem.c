@@ -114,19 +114,6 @@ void *__kmalloc(size_t size, gfp_t gfp)
 }
 EXPORT_SYMBOL(__kmalloc);
 
-void *krealloc(const void *b, size_t new_size, gfp_t flags)
-{
-	struct mem_block_meta *mbm=mem_block_find_meta(b);
-	struct mem_block_meta *nmbm=__alloc_mem_block(new_size);
-
-	BUG_ON(mbm == NULL);
-	if (!nmbm)
-		return NULL;
-	memcpy(nmbm->block, mbm->block, min(nmbm->size, mbm->size));
-	return nmbm->block;
-}
-EXPORT_SYMBOL(krealloc);
-
 void kfree(const void *block)
 {
 	if (!block)
@@ -147,13 +134,11 @@ struct kmem_cache {
 	unsigned int size; /*, align; - no align */
 	unsigned long flags;
 	const char *name;
-	void (*ctor)(void *, struct kmem_cache *, unsigned long);
+	void (*ctor) (void *);
 };
 
 struct kmem_cache *kmem_cache_create(const char *name, size_t size,
-	size_t align, unsigned long flags,
-	void (*ctor)(void*, struct kmem_cache *, unsigned long),
-	void (*dtor)(void*, struct kmem_cache *, unsigned long))
+	size_t align, unsigned long flags, void (*ctor) (void*))
 {
 	struct kmem_cache *c;
 
@@ -182,21 +167,11 @@ void *kmem_cache_alloc(struct kmem_cache *c, gfp_t flags)
 	void *b=alloc_mem_block(c->size);
 
 	if (c->ctor)
-		c->ctor(b, c, 0);
+		c->ctor(b);
 
 	return b;
 }
 EXPORT_SYMBOL(kmem_cache_alloc);
-
-void *kmem_cache_zalloc(struct kmem_cache *c, gfp_t flags)
-{
-	void *ret = kmem_cache_alloc(c, flags);
-	if (ret)
-		memset(ret, 0, c->size);
-
-	return ret;
-}
-EXPORT_SYMBOL(kmem_cache_zalloc);
 
 static void __kmem_cache_free(void *b, int size)
 {
@@ -257,11 +232,19 @@ int kmem_ptr_validate(struct kmem_cache *a, const void *b)
 	return 0;
 }
 
-void __init kmem_cache_init(void)
+static unsigned int lkl_slab_ready __read_mostly;
+
+int slab_is_available(void)
 {
+	return lkl_slab_ready;
 }
 
-#endif 
+void __init kmem_cache_init(void)
+{
+	lkl_slab_ready = 1;
+}
+
+#endif/* CONFIG_LKL_SLAB */
 
 void show_mem(void)
 {
