@@ -19,6 +19,15 @@ enum sock_type {
 	SOCK_PACKET	= 10,
 };
 #define SOCK_MAX (SOCK_PACKET + 1)
+
+#define SOCK_TYPE_MASK 0xf
+
+/* Flags for socket, socketpair, accept4 */
+#define SOCK_CLOEXEC	O_CLOEXEC
+#ifndef SOCK_NONBLOCK
+#define SOCK_NONBLOCK	O_NONBLOCK
+#endif
+
 #else
 #define	SOCK_STREAM 	1
 #define	SOCK_DGRAM	2

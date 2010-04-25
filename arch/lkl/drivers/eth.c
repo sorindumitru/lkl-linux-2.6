@@ -125,7 +125,7 @@ static void cleanup_netdev(struct net_device *netdev)
 
 int _lkl_del_eth(int ifindex)
 {
-	struct net_device *netdev=dev_get_by_index(ifindex);
+	struct net_device *netdev=dev_get_by_index(&init_net,ifindex);
 
 	if (!netdev)
 		return -1;

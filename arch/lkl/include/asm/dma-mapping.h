@@ -18,6 +18,12 @@ dma_set_mask(struct device *dev, u64 dma_mask)
 	return(0);
 }
 
+static inline int
+dma_mapping_error(struct device* dev, dma_addr_t addr)
+{
+		return 0;
+}
+
 static inline void *
 dma_alloc_coherent(struct device *dev, size_t size, dma_addr_t *dma_handle,
 		   gfp_t flag)

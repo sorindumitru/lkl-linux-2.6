@@ -12,7 +12,7 @@ _ENV+=$(if $(CONFIG_LKL_ENV_LINUX),linux)
 ENV=$(strip $(_ENV))
 
 
-DRV=$(if $(CONFIG_LKL_DRV_DISK),disk) $(if $(CONFIG_LKL_DRV_ETH),eth) 
+DRV=$(if $(CONFIG_LKL_DRV_DISK),disk) $(if $(CONFIG_LKL_DRV_ETH),eth) $(if $(CONFIG_LKL_DRV_ETH),eth_tun) 
 DRV_OBJS=$(patsubst %,$(obj)/drivers/$(ENV)/%.o,$(DRV))
 
 LIB=$(shell ls $(srctree)/$(src)/lib/*.c)
