@@ -22,6 +22,7 @@
 
 struct sockaddr;
 struct pollfd;
+struct msghdr;
 
 /* 
  * FIXME: these structs are duplicated from within the kernel. Find a way
@@ -90,10 +91,18 @@ long lkl_sys_halt(void);
 long lkl_sys_getcwd(char *buf, unsigned long size);
 long lkl_sys_utime(const char *filename, const struct __kernel_utimbuf *buf);
 long lkl_sys_socket(int family, int type, int protocol);
+long lkl_sys_bind(int sock, const struct sockaddr *saddr, unsigned int addrlen);
+long lkl_sys_connect(int sock, struct sockaddr *saddr, int len);
+long lkl_sys_listen(int sock, int backlog);
+long lkl_sys_accept(int sock, struct sockaddr *saddr, unsigned int* addrlen);
 long lkl_sys_send(int sock, void *buffer, __kernel_size_t size, unsigned flags);
 long lkl_sys_recv(int sock, void *buffer, __kernel_size_t size, unsigned flags);
+long lkl_sys_sendmsg(int sockfd, struct msghdr *msg, int flags);
+long lkl_sys_recvmsg(int sockfd, struct msghdr *msg, int flags);
 long lkl_sys_ioctl(unsigned int fd, unsigned int cmd, unsigned long arg);
 long lkl_sys_connect(int sock, struct sockaddr *saddr, int len);
+long lkl_sys_setsockopt(int sockfd, int level, int optname,const void *optval, int optlen);
+long lkl_sys_getsockname(int sockfd, struct sockaddr *addr, int *addrlen);
 long lkl_sys_umask(int mask);
 long lkl_sys_getuid(void);
 long lkl_sys_getgid(void);

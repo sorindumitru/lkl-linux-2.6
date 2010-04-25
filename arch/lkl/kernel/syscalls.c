@@ -486,6 +486,49 @@ long lkl_sys_connect(int sock, struct sockaddr *saddr, int len)
 	return SYSCALL(socketcall, SYS_CONNECT, (long)args);
 }
 
+long lkl_sys_bind(int sock, const struct sockaddr *saddr, unsigned int addrlen)
+{
+	long args[6]={sock, (long)saddr, addrlen};
+	return SYSCALL(socketcall, SYS_BIND, (long)args);
+}
+
+
+long lkl_sys_listen(int sock, int backlog)
+{
+	long args[6]={sock,backlog};
+	return SYSCALL(socketcall, SYS_LISTEN, (long)args);
+}
+
+long lkl_sys_accept(int sock, struct sockaddr *saddr, unsigned int* addrlen)
+{
+	long args[6]={sock, (long)saddr, (long)addrlen};
+	return SYSCALL(socketcall, SYS_ACCEPT, (long)args);
+}
+
+long lkl_sys_sendmsg(int sockfd, const struct msghdr *msg, int flags)
+{
+	long args[6]={sockfd, (long)msg, flags};
+	return SYSCALL(socketcall, SYS_SENDMSG, (long)args);
+}
+
+long lkl_sys_recvmsg(int sockfd, struct msghdr *msg, int flags)
+{
+	long args[6]={sockfd, (long)msg, flags};
+	return SYSCALL(socketcall, SYS_RECVMSG, (long)args);
+}
+
+long lkl_sys_setsockopt(int sockfd, int level, int optname,const void *optval, int optlen)
+{
+	long args[6]={sockfd, level, optname,(long)optval,optlen};
+	return SYSCALL(socketcall,SYS_SETSOCKOPT,(long)args);
+}
+
+long lkl_sys_getsockname(int sockfd, struct sockaddr *addr, int *addrlen)
+{
+	long args[6]={sockfd, (long)addr, (long)addrlen};
+	return SYSCALL(socketcall,SYS_GETSOCKNAME,(long)args);
+}
+
 long lkl_sys_ioctl(unsigned int fd, unsigned int cmd, unsigned long arg)
 {
 	return SYSCALL(ioctl, fd, cmd, arg);
